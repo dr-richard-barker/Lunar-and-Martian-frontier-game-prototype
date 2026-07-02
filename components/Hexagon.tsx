@@ -25,6 +25,16 @@ const TERRAIN_SURFACE: Record<TerrainType, string> = {
     `radial-gradient(circle at 50% 52%, rgba(2,6,23,0.75) 0%, rgba(2,6,23,0.35) 45%, transparent 70%), ${NOISE}`,
 };
 
+/** Subtle per-terrain elevation (px) — craters sink, mineral tiles rise. */
+const ELEVATION: Record<TerrainType, number> = {
+  [TerrainType.REGOLITH]: 0,
+  [TerrainType.ICE]: 2,
+  [TerrainType.ORES]: 4,
+  [TerrainType.SILICATES]: 2,
+  [TerrainType.HE3]: 5,
+  [TerrainType.CRATER]: -7,
+};
+
 interface HexagonProps {
   data: HexData;
   selected: boolean;
@@ -33,9 +43,10 @@ interface HexagonProps {
   /** Dice-roll match this sol: 'gold' when a building is surging, 'ring' for a bare match. */
   surge: SurgeKind;
   onSelect: (id: number) => void;
+  onHover: (id: number | null) => void;
 }
 
-const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSelect }) => {
+const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSelect, onHover }) => {
   const { q, r, terrain, building, construction, diceValue } = data;
 
   const x = HEX_RADIUS * Math.sqrt(3) * (q + r / 2);
@@ -115,13 +126,18 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSe
 
   return (
     <div
-      className="prism-container group cursor-pointer"
+      className="prism-container tile-drop group cursor-pointer"
       style={{
         left: `calc(50% + ${x}px)`,
         top: `calc(50% + ${y}px)`,
         width: 0, height: 0,
+        transform: `translateZ(${ELEVATION[terrain]}px)`,
+        ['--elev' as string]: `${ELEVATION[terrain]}px`,
+        animationDelay: `${(Math.abs(q) + Math.abs(r)) * 90}ms`,
       }}
       onClick={(e) => { e.stopPropagation(); onSelect(data.id); }}
+      onMouseEnter={() => onHover(data.id)}
+      onMouseLeave={() => onHover(null)}
     >
       {/* Side Faces */}
       {sides.map((side, i) => (
@@ -139,7 +155,7 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSe
 
       {/* Top Layer - Terrain surface (flat decals only; clip-path flattens 3D) */}
       <div
-        className="prism-face prism-top transition-all duration-300 group-hover:brightness-110 shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
+        className="prism-face prism-top tile-surface transition-all duration-300 group-hover:brightness-110"
         style={{
           backgroundColor: style.color,
           transform: `translate(-50%, -50%) translateZ(0px)`,
@@ -178,7 +194,9 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSe
           className="structure-anchor"
           style={{ transform: 'translateZ(0.5px)' }}
         >
-          {building ? <BuildingModel type={building} /> : <ConstructionSite />}
+          <div key={building ?? 'site'} className="structure-pop" style={{ transformStyle: 'preserve-3d' }}>
+            {building ? <BuildingModel type={building} /> : <ConstructionSite />}
+          </div>
         </div>
       )}
 

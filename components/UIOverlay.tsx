@@ -8,6 +8,8 @@ interface UIOverlayProps {
   gameState: GameState;
   speed: number;
   isRolling: boolean;
+  muted: boolean;
+  onToggleMute: () => void;
   onSetSpeed: (speed: number) => void;
   onSave: () => void;
   onNewColony: () => void;
@@ -21,6 +23,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   gameState,
   speed,
   isRolling,
+  muted,
+  onToggleMute,
   onSetSpeed,
   onSave,
   onNewColony,
@@ -155,6 +159,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         {/* Time & Session Controls */}
         <div className="flex flex-col gap-3 items-end pointer-events-auto">
           <div className="flex gap-2">
+            <button
+              onClick={onToggleMute}
+              className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"
+              title={muted ? 'Unmute sound effects' : 'Mute sound effects'}
+            >
+              {muted ? '🔇 MUTED' : '🔊 SOUND'}
+            </button>
             <button
               onClick={onSave}
               className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"

@@ -18,7 +18,7 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
   const withinReach = isWithinReach(gameState.board, hex);
 
   return (
-    <div className="hud-panel absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl pointer-events-auto p-5 z-40">
+    <div className="hud-panel panel-in absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl pointer-events-auto p-5 z-40">
       {/* Header */}
       <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-700">
         <div>

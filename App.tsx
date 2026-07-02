@@ -4,13 +4,25 @@ import UIOverlay from './components/UIOverlay';
 import BuildMenu from './components/BuildMenu';
 import CityPanel from './components/CityPanel';
 import { WorkerModel } from './components/Structure3D';
-import { GameState, BuildingType, ColonyEvent, CityProduct } from './types';
-import { TICK_MS, HEX_RADIUS, BUILDINGS } from './constants';
+import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind } from './types';
+import { TICK_MS, HEX_RADIUS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
   newGame, tick, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
+  countBuildings,
 } from './services/simulation';
 import { saveGame, loadGame } from './services/storage';
 import { nextLore } from './services/events';
+import { sfx, unlock, isMuted, setMuted } from './services/sound';
+
+interface YieldPopup {
+  id: number;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+}
+
+let popupId = 0;
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame());
@@ -20,6 +32,9 @@ const App: React.FC = () => {
   const [isRolling, setIsRolling] = useState(false);
   const [lore, setLore] = useState(nextLore());
   const [viewState, setViewState] = useState({ rotationX: 55, rotationZ: -25, zoom: 0.8 });
+  const [muted, setMutedState] = useState(isMuted());
+  const [hoveredHexId, setHoveredHexId] = useState<number | null>(null);
+  const [popups, setPopups] = useState<YieldPopup[]>([]);
 
   const isDragging = useRef(false);
   const dragDistance = useRef(0);
@@ -37,9 +52,36 @@ const App: React.FC = () => {
         const result = tick(prev);
         if (result.event) {
           setActiveEvent(result.event);
+          sfx.alert();
           if (eventTimer.current) clearTimeout(eventTimer.current);
           eventTimer.current = setTimeout(() => setActiveEvent(null), 7000);
         }
+
+        // Audio feedback for things that finished this sol.
+        if (countBuildings(result.state.board) > countBuildings(prev.board)) sfx.complete();
+        if (result.state.population > prev.population || result.state.units.length > prev.units.length) sfx.arrive();
+        if (result.state.population < prev.population) sfx.loss();
+
+        // Floating yield numbers over surged tiles.
+        const roll = result.state.lastRoll ? result.state.lastRoll.d1 + result.state.lastRoll.d2 : null;
+        const fresh: YieldPopup[] = [];
+        if (roll !== null) {
+          for (const hex of result.state.board) {
+            if (hex.diceValue !== roll || !hex.building) continue;
+            const production = BUILDINGS[hex.building].production;
+            if (!production) continue;
+            const [kind, amount] = Object.entries(production)[0];
+            fresh.push({
+              id: popupId++,
+              x: HEX_RADIUS * Math.sqrt(3) * (hex.q + hex.r / 2),
+              y: HEX_RADIUS * 3 / 2 * hex.r,
+              text: `+${Math.round(amount * 2 * 10) / 10} ${RESOURCE_STYLES[kind as ResourceKind].icon}`,
+              color: RESOURCE_STYLES[kind as ResourceKind].color,
+            });
+          }
+        }
+        setPopups(fresh);
+
         // Autosave every 5 sols
         if (result.state.sol % 5 === 0) saveGame(result.state);
         return result.state;
@@ -65,6 +107,7 @@ const App: React.FC = () => {
 
   // --- Camera controls ---
   const handleMouseDown = (e: React.MouseEvent) => {
+    unlock(); // WebAudio needs a user gesture before it can play
     isDragging.current = true;
     dragDistance.current = 0;
     lastMousePos.current = { x: e.clientX, y: e.clientY };
@@ -103,10 +146,12 @@ const App: React.FC = () => {
   // --- Game actions ---
   const handleSelectHex = useCallback((id: number) => {
     if (dragDistance.current > 8) return;
+    sfx.click();
     setSelectedHexId(prev => (prev === id ? null : id));
   }, []);
 
   const handleBuild = useCallback((hexId: number, type: BuildingType) => {
+    sfx.place();
     setGameState(prev => {
       const next = orderConstruction(prev, hexId, type);
       saveGame(next);
@@ -115,6 +160,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleDemolish = useCallback((hexId: number) => {
+    sfx.demolish();
     setGameState(prev => {
       const next = demolish(prev, hexId);
       saveGame(next);
@@ -123,6 +169,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleEnqueue = useCallback((product: CityProduct) => {
+    sfx.place();
     setGameState(prev => {
       const next = enqueueProduct(prev, product);
       saveGame(next);
@@ -131,10 +178,18 @@ const App: React.FC = () => {
   }, []);
 
   const handleCancelQueueItem = useCallback((itemId: number) => {
+    sfx.click();
     setGameState(prev => {
       const next = cancelQueueItem(prev, itemId);
       saveGame(next);
       return next;
+    });
+  }, []);
+
+  const handleToggleMute = useCallback(() => {
+    setMutedState(prev => {
+      setMuted(!prev);
+      return !prev;
     });
   }, []);
 
@@ -178,6 +233,9 @@ const App: React.FC = () => {
     ? gameState.board.find(h => h.id === selectedHexId) ?? null
     : null;
   const cityIsSelected = selectedHex?.building === BuildingType.CITY;
+  const hoveredHex = hoveredHexId !== null
+    ? gameState.board.find(h => h.id === hoveredHexId) ?? null
+    : null;
 
   return (
     <div
@@ -216,7 +274,23 @@ const App: React.FC = () => {
                 frontier={frontierIds.has(hex.id)}
                 surge={surgeFor(hex.id)}
                 onSelect={handleSelectHex}
+                onHover={setHoveredHexId}
               />
+            ))}
+
+            {/* Floating yield numbers on dice surges */}
+            {popups.map(p => (
+              <div
+                key={p.id}
+                className="yield-popup"
+                style={{
+                  left: `calc(50% + ${p.x}px)`,
+                  top: `calc(50% + ${p.y}px)`,
+                  color: p.color,
+                }}
+              >
+                {p.text}
+              </div>
             ))}
 
             {/* Worker rover units */}
@@ -245,10 +319,25 @@ const App: React.FC = () => {
         </div>
       </div>
 
+      {/* Cinematic vignette */}
+      <div className="vignette" />
+
+      {/* Hovered-sector readout */}
+      {hoveredHex && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none bg-slate-900/85 border border-slate-700 rounded-full px-5 py-1.5 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-300 backdrop-blur shadow-lg">
+          Sector {hoveredHex.id} · {TERRAIN_STYLES[hoveredHex.terrain].label}
+          {hoveredHex.diceValue !== null && <span className="text-amber-300"> · Yield {hoveredHex.diceValue}</span>}
+          {hoveredHex.building && <span className="text-sky-300"> · {BUILDINGS[hoveredHex.building].name}</span>}
+          {hoveredHex.construction && <span className="text-amber-400"> · Building {BUILDINGS[hoveredHex.construction.type].name}</span>}
+        </div>
+      )}
+
       <UIOverlay
         gameState={gameState}
         speed={speed}
         isRolling={isRolling}
+        muted={muted}
+        onToggleMute={handleToggleMute}
         onSetSpeed={setSpeed}
         onSave={handleSave}
         onNewColony={handleNewColony}

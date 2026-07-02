@@ -229,6 +229,71 @@ body {
   100% { transform: rotateX(360deg) rotateY(720deg) translateY(0); }
 }
 
+/* --- Polish: motion & atmosphere --- */
+
+/* Tiles drop into place on load, staggered ring by ring */
+.tile-drop {
+  animation: tile-drop 0.75s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes tile-drop {
+  from { transform: translateZ(-280px); }
+  to { transform: translateZ(var(--elev, 0px)); }
+}
+
+/* Coherent tile lighting: sunlit rim top-left, ambient occlusion bottom-right */
+.tile-surface {
+  box-shadow:
+    inset 5px 8px 16px rgba(255, 255, 255, 0.10),
+    inset -8px -12px 24px rgba(0, 0, 0, 0.45),
+    inset 0 0 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Newly finished structures pop in */
+.structure-pop {
+  animation: structure-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+@keyframes structure-pop {
+  from { transform: scale3d(0.05, 0.05, 0.05); }
+  to { transform: scale3d(1, 1, 1); }
+}
+
+/* Side panels slide in */
+.panel-in {
+  animation: panel-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translate(28px, -50%); }
+  to { opacity: 1; transform: translate(0, -50%); }
+}
+
+/* Floating yield numbers over surged tiles */
+.yield-popup {
+  position: absolute;
+  width: 90px;
+  margin-left: -45px;
+  text-align: center;
+  font-family: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 12px currentColor;
+  pointer-events: none;
+  animation: yield-float 1.6s ease-out forwards;
+}
+@keyframes yield-float {
+  0% { opacity: 0; transform: rotateZ(calc(var(--rz, 0) * -1deg)) translateZ(34px); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: rotateZ(calc(var(--rz, 0) * -1deg)) translateZ(100px); }
+}
+
+/* Cinematic vignette */
+.vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(2, 4, 8, 0.34) 82%, rgba(2, 4, 8, 0.62) 100%);
+}
+
 /* --- NASA x cyberpunk effects --- */
 
 /* Spinning holographic rings */
