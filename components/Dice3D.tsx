@@ -1,10 +1,26 @@
-
 import React from 'react';
 
 interface Dice3DProps {
   value: number | null;
   isRolling: boolean;
 }
+
+const PIPS: Record<number, [number, number][]> = {
+  1: [[50, 50]],
+  2: [[28, 28], [72, 72]],
+  3: [[26, 26], [50, 50], [74, 74]],
+  4: [[30, 30], [70, 30], [30, 70], [70, 70]],
+  5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]],
+  6: [[30, 25], [70, 25], [30, 50], [70, 50], [30, 75], [70, 75]],
+};
+
+const DiceFace: React.FC<{ value: number; className: string }> = ({ value, className }) => (
+  <div className={`dice-face ${className}`}>
+    {PIPS[value].map(([x, y], i) => (
+      <span key={i} className="dice-pip" style={{ left: `${x}%`, top: `${y}%` }} />
+    ))}
+  </div>
+);
 
 const Dice3D: React.FC<Dice3DProps> = ({ value, isRolling }) => {
   const getRotation = (val: number | null) => {
@@ -21,18 +37,17 @@ const Dice3D: React.FC<Dice3DProps> = ({ value, isRolling }) => {
   };
 
   return (
-    <div className="perspective-[600px] flex items-center justify-center h-24 w-24">
-      <div 
+    <div className="dice-stage">
+      <div
         className={`dice ${isRolling ? 'rolling' : ''}`}
         style={{ transform: getRotation(value) }}
       >
-        {/* Realistic pips could be added here, using simple numbers for clarity */}
-        <div className="dice-face face-1 border-4 border-slate-800 bg-white">1</div>
-        <div className="dice-face face-2 border-4 border-slate-800 bg-white">2</div>
-        <div className="dice-face face-3 border-4 border-slate-800 bg-white">3</div>
-        <div className="dice-face face-4 border-4 border-slate-800 bg-white">4</div>
-        <div className="dice-face face-5 border-4 border-slate-800 bg-white">5</div>
-        <div className="dice-face face-6 border-4 border-slate-800 bg-white">6</div>
+        <DiceFace value={1} className="face-1" />
+        <DiceFace value={2} className="face-2" />
+        <DiceFace value={3} className="face-3" />
+        <DiceFace value={4} className="face-4" />
+        <DiceFace value={5} className="face-5" />
+        <DiceFace value={6} className="face-6" />
       </div>
     </div>
   );
