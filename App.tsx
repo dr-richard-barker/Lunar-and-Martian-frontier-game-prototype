@@ -1,10 +1,14 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Hexagon from './components/Hexagon';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import Hexagon, { SurgeKind } from './components/Hexagon';
 import UIOverlay from './components/UIOverlay';
 import BuildMenu from './components/BuildMenu';
-import { GameState, BuildingType, ColonyEvent } from './types';
-import { TICK_MS } from './constants';
-import { newGame, tick, build, demolish } from './services/simulation';
+import CityPanel from './components/CityPanel';
+import { WorkerModel } from './components/Structure3D';
+import { GameState, BuildingType, ColonyEvent, CityProduct } from './types';
+import { TICK_MS, HEX_RADIUS, BUILDINGS } from './constants';
+import {
+  newGame, tick, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
+} from './services/simulation';
 import { saveGame, loadGame } from './services/storage';
 import { nextLore } from './services/events';
 
@@ -13,6 +17,7 @@ const App: React.FC = () => {
   const [speed, setSpeed] = useState(1);
   const [selectedHexId, setSelectedHexId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<ColonyEvent | null>(null);
+  const [isRolling, setIsRolling] = useState(false);
   const [lore, setLore] = useState(nextLore());
   const [viewState, setViewState] = useState({ rotationX: 55, rotationZ: -25, zoom: 0.8 });
 
@@ -20,11 +25,14 @@ const App: React.FC = () => {
   const dragDistance = useRef(0);
   const lastMousePos = useRef({ x: 0, y: 0 });
   const eventTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- Simulation loop ---
   useEffect(() => {
     if (speed === 0) return;
     const interval = setInterval(() => {
+      // Browsers throttle hidden tabs to ~1 timer/min anyway; pause cleanly instead.
+      if (document.hidden) return;
       setGameState(prev => {
         const result = tick(prev);
         if (result.event) {
@@ -39,6 +47,15 @@ const App: React.FC = () => {
     }, TICK_MS / speed);
     return () => clearInterval(interval);
   }, [speed]);
+
+  // --- Dice roll animation on each new sol ---
+  useEffect(() => {
+    if (!gameState.lastRoll) return;
+    setIsRolling(true);
+    if (rollTimer.current) clearTimeout(rollTimer.current);
+    rollTimer.current = setTimeout(() => setIsRolling(false), 550);
+    return () => { if (rollTimer.current) clearTimeout(rollTimer.current); };
+  }, [gameState.sol]);
 
   // --- Rotating commander transmissions ---
   useEffect(() => {
@@ -85,14 +102,13 @@ const App: React.FC = () => {
 
   // --- Game actions ---
   const handleSelectHex = useCallback((id: number) => {
-    // Ignore clicks that were actually orbit drags
     if (dragDistance.current > 8) return;
     setSelectedHexId(prev => (prev === id ? null : id));
   }, []);
 
   const handleBuild = useCallback((hexId: number, type: BuildingType) => {
     setGameState(prev => {
-      const next = build(prev, hexId, type);
+      const next = orderConstruction(prev, hexId, type);
       saveGame(next);
       return next;
     });
@@ -101,6 +117,22 @@ const App: React.FC = () => {
   const handleDemolish = useCallback((hexId: number) => {
     setGameState(prev => {
       const next = demolish(prev, hexId);
+      saveGame(next);
+      return next;
+    });
+  }, []);
+
+  const handleEnqueue = useCallback((product: CityProduct) => {
+    setGameState(prev => {
+      const next = enqueueProduct(prev, product);
+      saveGame(next);
+      return next;
+    });
+  }, []);
+
+  const handleCancelQueueItem = useCallback((itemId: number) => {
+    setGameState(prev => {
+      const next = cancelQueueItem(prev, itemId);
       saveGame(next);
       return next;
     });
@@ -122,9 +154,30 @@ const App: React.FC = () => {
     setGameState(fresh);
   }, []);
 
+  // --- Derived board annotations ---
+  const rollSum = gameState.lastRoll ? gameState.lastRoll.d1 + gameState.lastRoll.d2 : null;
+
+  const frontierIds = useMemo(() => {
+    const ids = new Set<number>();
+    for (const hex of gameState.board) {
+      if (!hex.building && !hex.construction && isWithinReach(gameState.board, hex)) {
+        ids.add(hex.id);
+      }
+    }
+    return ids;
+  }, [gameState.board]);
+
+  const surgeFor = (hexId: number): SurgeKind => {
+    const hex = gameState.board[hexId];
+    if (rollSum === null || hex.diceValue !== rollSum) return 'none';
+    if (hex.building && BUILDINGS[hex.building].production) return 'gold';
+    return 'ring';
+  };
+
   const selectedHex = selectedHexId !== null
     ? gameState.board.find(h => h.id === selectedHexId) ?? null
     : null;
+  const cityIsSelected = selectedHex?.building === BuildingType.CITY;
 
   return (
     <div
@@ -145,6 +198,7 @@ const App: React.FC = () => {
             transform: `rotateX(${viewState.rotationX}deg) rotateZ(${viewState.rotationZ}deg) scale(${viewState.zoom})`,
             transformStyle: 'preserve-3d',
             width: '1000px', height: '1000px',
+            ['--rz' as string]: `${viewState.rotationZ}`,
           }}
         >
           {/* Base Shadow Floor */}
@@ -159,9 +213,34 @@ const App: React.FC = () => {
                 key={hex.id}
                 data={hex}
                 selected={hex.id === selectedHexId}
+                frontier={frontierIds.has(hex.id)}
+                surge={surgeFor(hex.id)}
                 onSelect={handleSelectHex}
               />
             ))}
+
+            {/* Worker rover units */}
+            {gameState.units.map(unit => {
+              const ux = HEX_RADIUS * Math.sqrt(3) * (unit.q + unit.r / 2);
+              const uy = HEX_RADIUS * 3 / 2 * unit.r;
+              // Nudge idle rovers at the hub apart so they don't stack.
+              const jitter = unit.state === 'idle'
+                ? { x: Math.cos(unit.id * 2.4) * 26, y: Math.sin(unit.id * 2.4) * 26 }
+                : { x: 0, y: 0 };
+              return (
+                <div
+                  key={unit.id}
+                  className="unit-anchor"
+                  style={{
+                    left: `calc(50% + ${ux + jitter.x}px)`,
+                    top: `calc(50% + ${uy + jitter.y}px)`,
+                  }}
+                  title={`Worker Rover ${unit.id} — ${unit.state}`}
+                >
+                  <WorkerModel working={unit.state === 'constructing'} />
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -169,6 +248,7 @@ const App: React.FC = () => {
       <UIOverlay
         gameState={gameState}
         speed={speed}
+        isRolling={isRolling}
         onSetSpeed={setSpeed}
         onSave={handleSave}
         onNewColony={handleNewColony}
@@ -178,13 +258,22 @@ const App: React.FC = () => {
 
       {selectedHex && (
         <div className="fixed inset-0 pointer-events-none z-20" onMouseDown={e => e.stopPropagation()}>
-          <BuildMenu
-            gameState={gameState}
-            hex={selectedHex}
-            onBuild={handleBuild}
-            onDemolish={handleDemolish}
-            onClose={() => setSelectedHexId(null)}
-          />
+          {cityIsSelected ? (
+            <CityPanel
+              gameState={gameState}
+              onEnqueue={handleEnqueue}
+              onCancelQueueItem={handleCancelQueueItem}
+              onClose={() => setSelectedHexId(null)}
+            />
+          ) : (
+            <BuildMenu
+              gameState={gameState}
+              hex={selectedHex}
+              onBuild={handleBuild}
+              onDemolish={handleDemolish}
+              onClose={() => setSelectedHexId(null)}
+            />
+          )}
         </div>
       )}
     </div>

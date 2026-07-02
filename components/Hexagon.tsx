@@ -1,15 +1,22 @@
 import React, { useMemo } from 'react';
-import { HexData, TerrainType, BuildingType } from '../types';
-import { HEX_RADIUS, TERRAIN_STYLES, BUILDINGS } from '../constants';
+import { HexData, TerrainType } from '../types';
+import { HEX_RADIUS, TERRAIN_STYLES } from '../constants';
+import { BuildingModel, ConstructionSite } from './Structure3D';
+
+export type SurgeKind = 'none' | 'ring' | 'gold';
 
 interface HexagonProps {
   data: HexData;
   selected: boolean;
+  /** Tile is adjacent to the colony and open for construction. */
+  frontier: boolean;
+  /** Dice-roll match this sol: 'gold' when a building is surging, 'ring' for a bare match. */
+  surge: SurgeKind;
   onSelect: (id: number) => void;
 }
 
-const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
-  const { q, r, terrain, building } = data;
+const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSelect }) => {
+  const { q, r, terrain, building, construction, diceValue } = data;
 
   const x = HEX_RADIUS * Math.sqrt(3) * (q + r / 2);
   const y = HEX_RADIUS * 3 / 2 * r;
@@ -39,7 +46,6 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
               height: `${10 + Math.random() * 20}px`,
               left: `${20 + Math.random() * 60}px`,
               top: `${20 + Math.random() * 80}px`,
-              transform: 'translateZ(1px)'
             }}
           />
         ));
@@ -49,9 +55,8 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
             key={i}
             className="terrain-crystal"
             style={{
-              left: `${30 + Math.random() * 40}px`,
+              left: `${25 + Math.random() * 50}px`,
               top: `${30 + Math.random() * 60}px`,
-              transform: `translateZ(${10 + i * 5}px) rotateY(${i * 45}deg) rotateX(10deg)`,
               opacity: 0.8,
               boxShadow: '0 0 10px rgba(14, 165, 233, 0.5)'
             }}
@@ -66,7 +71,6 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
               left: '22px', top: '30px',
               background: 'radial-gradient(circle, #f87171 0%, transparent 70%)',
               filter: 'blur(10px)',
-              transform: 'translateZ(2px)',
               animation: 'pulse 3s infinite'
             }}
           />
@@ -80,17 +84,14 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
               left: '32px', top: '40px',
               background: '#8b5cf6',
               clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
-              transform: 'translateZ(2px) rotateX(20deg)',
               boxShadow: '0 0 20px #8b5cf6',
-              opacity: 0.5,
+              opacity: 0.45,
             }}
           />
         );
       default: return null;
     }
   }, [terrain]);
-
-  const buildingDef = building ? BUILDINGS[building] : null;
 
   return (
     <div
@@ -116,7 +117,7 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
         />
       ))}
 
-      {/* Top Layer - Main Terrain */}
+      {/* Top Layer - Terrain surface (flat decals only; clip-path flattens 3D) */}
       <div
         className="prism-face prism-top transition-all duration-300 group-hover:brightness-110 shadow-[inset_0_0_40px_rgba(0,0,0,0.5)]"
         style={{
@@ -127,29 +128,65 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, onSelect }) => {
       >
         {terrainFeatures}
 
-        {/* Terrain icon (only when empty) or Building */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ transform: 'translateZ(10px)' }}>
-          {buildingDef ? (
-            <>
-              <div className="building-pad" />
-              <span className="text-4xl drop-shadow-2xl filter brightness-125" style={{ transform: 'translateZ(14px)' }}>
-                {buildingDef.icon}
-              </span>
-              <span className="text-[8px] font-bold uppercase tracking-tighter text-white/90 bg-slate-900/70 px-1.5 py-0.5 rounded mt-1" style={{ transform: 'translateZ(14px)' }}>
-                {buildingDef.name}
-              </span>
-            </>
-          ) : (
-            <span className="text-2xl opacity-70 drop-shadow-2xl">{style.icon}</span>
-          )}
-        </div>
+        {/* Terrain icon when tile is empty */}
+        {!building && !construction && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="text-xl opacity-50">{style.icon}</span>
+          </div>
+        )}
+
+        {/* Catan-style yield token */}
+        {diceValue !== null && (
+          <div
+            className={`num-token ${diceValue === 6 || diceValue === 8 ? 'num-token-hot' : ''} ${surge !== 'none' ? 'num-token-surge' : ''}`}
+          >
+            {diceValue}
+          </div>
+        )}
+
+        {/* Construction progress decal */}
+        {construction && (
+          <div className="construction-decal">
+            {Math.round(((construction.total - construction.remaining) / construction.total) * 100)}%
+          </div>
+        )}
       </div>
+
+      {/* 3D structure — sibling of the clipped top face so it can extrude */}
+      {(building || construction) && (
+        <div
+          className="structure-anchor"
+          style={{ transform: 'translateZ(0.5px)' }}
+        >
+          {building ? <BuildingModel type={building} /> : <ConstructionSite />}
+        </div>
+      )}
+
+      {/* Frontier tint — buildable border tiles */}
+      {frontier && !building && !construction && (
+        <div
+          className="prism-face prism-top pointer-events-none"
+          style={{
+            transform: `translate(-50%, -50%) translateZ(0.8px)`,
+            background: 'rgba(56, 189, 248, 0.07)',
+            border: '2px dashed rgba(56, 189, 248, 0.25)',
+          }}
+        />
+      )}
+
+      {/* Dice surge flash */}
+      {surge !== 'none' && (
+        <div
+          className={`prism-face prism-top pointer-events-none ${surge === 'gold' ? 'surge-gold' : 'surge-ring'}`}
+          style={{ transform: `translate(-50%, -50%) translateZ(1.2px)` }}
+        />
+      )}
 
       {/* Selection / Hover Glow */}
       <div
         className={`prism-face prism-top pointer-events-none transition-opacity duration-300 ${selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`}
         style={{
-          transform: `translate(-50%, -50%) translateZ(1px)`,
+          transform: `translate(-50%, -50%) translateZ(1.6px)`,
           boxShadow: selected ? '0 0 40px rgba(52, 211, 153, 0.6)' : '0 0 30px rgba(56, 189, 248, 0.4)',
           background: selected ? 'rgba(52, 211, 153, 0.2)' : 'rgba(56, 189, 248, 0.1)',
           border: selected ? '2px solid rgba(52, 211, 153, 0.8)' : 'none',

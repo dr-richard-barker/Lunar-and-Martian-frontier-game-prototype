@@ -1,11 +1,13 @@
 import React from 'react';
 import { GameState, ResourceKind, ColonyEvent } from '../types';
 import { RESOURCE_STYLES } from '../constants';
-import { getPowerReport, getHousing, getRates } from '../services/simulation';
+import { getPowerReport, getHousing, getRates, idleWorkers } from '../services/simulation';
+import Dice3D from './Dice3D';
 
 interface UIOverlayProps {
   gameState: GameState;
   speed: number;
+  isRolling: boolean;
   onSetSpeed: (speed: number) => void;
   onSave: () => void;
   onNewColony: () => void;
@@ -18,6 +20,7 @@ const SPEEDS = [0, 1, 2, 4];
 const UIOverlay: React.FC<UIOverlayProps> = ({
   gameState,
   speed,
+  isRolling,
   onSetSpeed,
   onSave,
   onNewColony,
@@ -27,6 +30,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   const power = getPowerReport(gameState.board);
   const housing = getHousing(gameState.board);
   const rates = getRates(gameState);
+  const idle = idleWorkers(gameState.units).length;
+  const rollSum = gameState.lastRoll ? gameState.lastRoll.d1 + gameState.lastRoll.d2 : null;
 
   return (
     <div
@@ -47,6 +52,12 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
               <p className="text-[9px] uppercase text-slate-500 font-bold tracking-widest">Colonists</p>
               <p className="text-xl font-orbitron text-white">
                 {gameState.population}<span className="text-xs text-slate-500">/{housing}</span>
+              </p>
+            </div>
+            <div>
+              <p className="text-[9px] uppercase text-slate-500 font-bold tracking-widest">Rovers</p>
+              <p className="text-xl font-orbitron text-white">
+                {idle}<span className="text-xs text-slate-500">/{gameState.units.length}</span>
               </p>
             </div>
             <div>
@@ -101,7 +112,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         </div>
       )}
 
-      {/* Bottom Footer: Resources & Controls */}
+      {/* Bottom Footer: Resources, Dice & Controls */}
       <div className="flex justify-between items-end gap-4">
         {/* Resources */}
         <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-700 p-5 rounded-3xl pointer-events-auto flex gap-7 shadow-2xl">
@@ -122,6 +133,23 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
               </div>
             );
           })}
+        </div>
+
+        {/* Sol Dice */}
+        <div className="flex flex-col items-center gap-1 pointer-events-auto">
+          <div className="flex gap-2 items-center bg-slate-900/60 backdrop-blur-lg px-4 py-2 rounded-2xl border border-slate-700/50">
+            <Dice3D value={gameState.lastRoll?.d1 ?? null} isRolling={isRolling} />
+            <Dice3D value={gameState.lastRoll?.d2 ?? null} isRolling={isRolling} />
+            <div className="ml-2 text-center w-14">
+              <p className="text-[8px] uppercase text-slate-500 font-bold tracking-widest">Yield Scan</p>
+              <p className={`text-2xl font-orbitron ${rollSum === 7 ? 'text-red-400' : 'text-amber-300'}`}>
+                {rollSum ?? '—'}
+              </p>
+            </div>
+          </div>
+          <p className="text-[8px] text-slate-600 font-bold uppercase tracking-widest">
+            Matching sectors yield double
+          </p>
         </div>
 
         {/* Time & Session Controls */}
@@ -156,7 +184,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             ))}
           </div>
           <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest pr-1">
-            Click a tile to build · Drag to orbit · Scroll to zoom
+            Click the hub to train rovers · Click tiles to build
           </p>
         </div>
       </div>

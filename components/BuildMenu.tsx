@@ -1,7 +1,7 @@
 import React from 'react';
 import { GameState, HexData, BuildingType, ResourceKind } from '../types';
 import { BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from '../constants';
-import { canBuild } from '../services/simulation';
+import { canBuild, idleWorkers, isWithinReach } from '../services/simulation';
 
 interface BuildMenuProps {
   gameState: GameState;
@@ -14,6 +14,8 @@ interface BuildMenuProps {
 const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemolish, onClose }) => {
   const terrain = TERRAIN_STYLES[hex.terrain];
   const currentBuilding = hex.building ? BUILDINGS[hex.building] : null;
+  const idle = idleWorkers(gameState.units).length;
+  const withinReach = isWithinReach(gameState.board, hex);
 
   return (
     <div className="absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl pointer-events-auto p-5 z-40">
@@ -23,7 +25,14 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
           <h2 className="font-orbitron text-lg text-sky-400 flex items-center gap-2">
             <span>{terrain.icon}</span> Sector {hex.id}
           </h2>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">{terrain.label}</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">
+            {terrain.label}
+            {hex.diceValue !== null && (
+              <span className={`ml-2 font-bold ${hex.diceValue === 6 || hex.diceValue === 8 ? 'text-red-400' : 'text-slate-200'}`}>
+                · Yield {hex.diceValue}
+              </span>
+            )}
+          </p>
         </div>
         <button
           onClick={onClose}
@@ -32,6 +41,33 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
           ×
         </button>
       </div>
+
+      {/* Under construction */}
+      {hex.construction && (
+        <div className="mb-4">
+          <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🏗️</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-300">{BUILDINGS[hex.construction.type].name}</p>
+                <p className="text-[10px] text-slate-400">{hex.construction.remaining} sols of work remaining</p>
+              </div>
+            </div>
+            <div className="h-1.5 bg-slate-900 rounded-full mt-2 overflow-hidden">
+              <div
+                className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                style={{ width: `${((hex.construction.total - hex.construction.remaining) / hex.construction.total) * 100}%` }}
+              />
+            </div>
+          </div>
+          <button
+            onClick={() => onDemolish(hex.id)}
+            className="w-full mt-3 bg-red-900/50 hover:bg-red-800/70 border border-red-700/50 text-red-300 text-xs font-bold py-2.5 rounded-xl transition-colors"
+          >
+            CANCEL CONSTRUCTION (refund 50%)
+          </button>
+        </div>
+      )}
 
       {/* Occupied tile */}
       {currentBuilding && (
@@ -43,7 +79,7 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
               <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{currentBuilding.description}</p>
             </div>
           </div>
-          {hex.building !== BuildingType.LANDER && (
+          {hex.building !== BuildingType.CITY && (
             <button
               onClick={() => onDemolish(hex.id)}
               className="w-full mt-3 bg-red-900/50 hover:bg-red-800/70 border border-red-700/50 text-red-300 text-xs font-bold py-2.5 rounded-xl transition-colors"
@@ -55,16 +91,28 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
       )}
 
       {/* Unbuildable terrain */}
-      {!currentBuilding && !terrain.buildable && (
+      {!currentBuilding && !hex.construction && !terrain.buildable && (
         <p className="text-xs text-slate-500 italic p-3 bg-slate-800/40 rounded-xl">
-          This crater is too unstable for construction. Scenic, though.
+          This crater is too unstable for construction. Rovers can't even cross it.
+        </p>
+      )}
+
+      {/* Out of reach */}
+      {!currentBuilding && !hex.construction && terrain.buildable && !withinReach && (
+        <p className="text-xs text-amber-400/80 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+          ⛺ Beyond colony reach. Structures must be built adjacent to your existing colony — expand outward, one ring at a time.
         </p>
       )}
 
       {/* Build options */}
-      {!currentBuilding && terrain.buildable && (
+      {!currentBuilding && !hex.construction && terrain.buildable && withinReach && (
         <div className="space-y-2">
-          <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Construct</p>
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Construct</p>
+            <p className={`text-[10px] font-mono ${idle > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              🚜 {idle} idle
+            </p>
+          </div>
           {(Object.keys(BUILDINGS) as BuildingType[])
             .filter(type => BUILDINGS[type].buildable)
             .map(type => {
@@ -100,6 +148,7 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
                         {def.housing && (
                           <span className="text-[10px] font-mono text-sky-300">👥 +{def.housing}</span>
                         )}
+                        <span className="text-[10px] font-mono text-slate-500">⏱ {def.buildSols}</span>
                       </div>
                       {!check.ok && check.reason && (
                         <p className="text-[9px] text-red-400 mt-1">{check.reason}</p>

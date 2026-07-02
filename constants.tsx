@@ -1,4 +1,6 @@
-import { TerrainType, BuildingType, BuildingDef, ResourceKind, Stockpile } from './types';
+import {
+  TerrainType, BuildingType, BuildingDef, ResourceKind, Stockpile, CityProduct, CityProductDef,
+} from './types';
 
 export const HEX_RADIUS = 60;
 export const BOARD_RADIUS = 4;
@@ -6,7 +8,18 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v1';
+export const SAVE_KEY = 'lunar-frontier-save-v2';
+
+/** Catan-style token pool, cycled over the board's non-crater tiles. */
+export const DICE_TOKEN_POOL = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
+
+/** Production multiplier when the sol's dice roll matches a tile's token. */
+export const SURGE_MULTIPLIER = 2;
+
+export const MAX_WORKERS = 5;
+export const MAX_QUEUE = 4;
+/** Hexes a worker rover travels per sol. */
+export const WORKER_SPEED = 2;
 
 export const TERRAIN_STYLES: Record<TerrainType, { color: string; icon: string; label: string; buildable: boolean }> = {
   [TerrainType.REGOLITH]: { color: '#64748b', icon: '🌑', label: 'Regolith Plain', buildable: true },
@@ -26,14 +39,15 @@ export const RESOURCE_STYLES: Record<ResourceKind, { icon: string; label: string
 };
 
 export const BUILDINGS: Record<BuildingType, BuildingDef> = {
-  [BuildingType.LANDER]: {
-    name: 'Landing Site',
-    icon: '🚀',
-    description: 'Your original descent vehicle. Provides emergency power and cramped crew quarters.',
+  [BuildingType.CITY]: {
+    name: 'Colony Hub',
+    icon: '🏛️',
+    description: 'The beating heart of the frontier. Trains worker rovers and requests shuttles from Earth.',
     cost: {},
-    power: 6,
-    housing: 4,
+    power: 8,
+    housing: 6,
     buildable: false,
+    buildSols: 0,
   },
   [BuildingType.SOLAR_ARRAY]: {
     name: 'Solar Array',
@@ -42,6 +56,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     cost: { [ResourceKind.METAL]: 10, [ResourceKind.CREDITS]: 50 },
     power: 5,
     buildable: true,
+    buildSols: 2,
   },
   [BuildingType.HABITAT]: {
     name: 'Habitat Dome',
@@ -51,6 +66,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     power: -2,
     housing: 6,
     buildable: true,
+    buildSols: 3,
   },
   [BuildingType.ICE_EXTRACTOR]: {
     name: 'Ice Extractor',
@@ -61,6 +77,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     production: { [ResourceKind.WATER]: 2 },
     terrain: [TerrainType.ICE],
     buildable: true,
+    buildSols: 3,
   },
   [BuildingType.OXYGENATOR]: {
     name: 'Oxygenator',
@@ -71,6 +88,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     consumption: { [ResourceKind.WATER]: 0.5 },
     production: { [ResourceKind.OXYGEN]: 1.6 },
     buildable: true,
+    buildSols: 3,
   },
   [BuildingType.GREENHOUSE]: {
     name: 'Greenhouse',
@@ -81,6 +99,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     consumption: { [ResourceKind.WATER]: 0.8 },
     production: { [ResourceKind.FOOD]: 1.4, [ResourceKind.OXYGEN]: 0.2 },
     buildable: true,
+    buildSols: 3,
   },
   [BuildingType.MINING_RIG]: {
     name: 'Mining Rig',
@@ -91,6 +110,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     production: { [ResourceKind.METAL]: 1.2 },
     terrain: [TerrainType.ORES],
     buildable: true,
+    buildSols: 4,
   },
   [BuildingType.HE3_EXTRACTOR]: {
     name: 'He-3 Extractor',
@@ -101,6 +121,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     production: { [ResourceKind.CREDITS]: 6 },
     terrain: [TerrainType.HE3],
     buildable: true,
+    buildSols: 5,
   },
   [BuildingType.LAUNCH_PAD]: {
     name: 'Launch Pad',
@@ -111,6 +132,26 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     production: { [ResourceKind.CREDITS]: 3 },
     unique: true,
     buildable: true,
+    buildSols: 6,
+  },
+};
+
+export const CITY_PRODUCTS: Record<CityProduct, CityProductDef> = {
+  [CityProduct.WORKER_ROVER]: {
+    name: 'Worker Rover',
+    icon: '🚜',
+    description: 'A crewed construction rover. Drives to build sites and erects structures. Crewing it costs 1 colonist.',
+    cost: { [ResourceKind.METAL]: 25, [ResourceKind.CREDITS]: 100 },
+    buildSols: 4,
+    popCost: 1,
+  },
+  [CityProduct.COLONIST_SHUTTLE]: {
+    name: 'Colonist Shuttle',
+    icon: '👨‍🚀',
+    description: 'Charter a shuttle from Earth. Delivers 3 eager colonists to the frontier.',
+    cost: { [ResourceKind.CREDITS]: 300 },
+    buildSols: 8,
+    popGain: 3,
   },
 };
 
@@ -141,7 +182,7 @@ export const INITIAL_RESOURCES: Stockpile = {
   [ResourceKind.FOOD]: 25,
 };
 
-export const INITIAL_POPULATION = 4;
+export const INITIAL_POPULATION = 5;
 
 export const MILESTONES: { id: string; test: (pop: number, buildings: number) => boolean; message: string }[] = [
   { id: 'pop10', test: (pop) => pop >= 10, message: 'Milestone: 10 colonists. The frontier is taking root.' },

@@ -1,14 +1,19 @@
 import {
   GameState, HexData, TerrainType, BuildingType, ResourceKind, Stockpile, PowerReport, ColonyEvent,
+  Unit, CityProduct, QueueItem, Coord,
 } from '../types';
 import {
   BUILDINGS, TERRAIN_STYLES, BOARD_RADIUS, SILICATE_SOLAR_BONUS, COLONIST_NEEDS, COLONIST_TAX,
   GROWTH_TICKS, DECLINE_TICKS, INITIAL_RESOURCES, INITIAL_POPULATION, MILESTONES,
+  DICE_TOKEN_POOL, SURGE_MULTIPLIER, MAX_WORKERS, MAX_QUEUE, WORKER_SPEED, CITY_PRODUCTS,
 } from '../constants';
 import { rollEvent } from './events';
+import { neighbors, findPath, hexDistance } from './hexgrid';
 
-const EVENT_MIN_GAP = 12;      // minimum sols between events
-const EVENT_CHANCE = 0.06;     // per-sol chance once past the gap
+const EVENT_AMBIENT_CHANCE = 0.02;
+const EVENT_AMBIENT_GAP = 14;
+const EVENT_SEVEN_CHANCE = 0.4;
+const EVENT_SEVEN_GAP = 8;
 
 export function generateBoard(): HexData[] {
   const hexes: HexData[] = [];
@@ -21,18 +26,29 @@ export function generateBoard(): HexData[] {
     ...Array(7).fill(TerrainType.HE3),
     ...Array(9).fill(TerrainType.CRATER),
   ];
+  const tokens = [...DICE_TOKEN_POOL].sort(() => Math.random() - 0.5);
+  let tokenIdx = 0;
 
   for (let q = -BOARD_RADIUS; q <= BOARD_RADIUS; q++) {
     for (let r = Math.max(-BOARD_RADIUS, -q - BOARD_RADIUS); r <= Math.min(BOARD_RADIUS, -q + BOARD_RADIUS); r++) {
-      const terrain = q === 0 && r === 0
+      const isCenter = q === 0 && r === 0;
+      const nearCenter = hexDistance({ q, r }, { q: 0, r: 0 }) <= 1;
+      let terrain = isCenter
         ? TerrainType.REGOLITH
         : weighted[Math.floor(Math.random() * weighted.length)];
+      // Keep the city's first ring passable and buildable.
+      if (nearCenter && terrain === TerrainType.CRATER) terrain = TerrainType.REGOLITH;
+      const diceValue = terrain === TerrainType.CRATER || isCenter
+        ? null
+        : tokens[(tokenIdx++) % tokens.length];
       hexes.push({
         id: id++,
         q,
         r,
         terrain,
-        building: q === 0 && r === 0 ? BuildingType.LANDER : null,
+        building: isCenter ? BuildingType.CITY : null,
+        diceValue,
+        construction: null,
       });
     }
   }
@@ -46,11 +62,15 @@ export function newGame(colonyName = 'FRONTIER BASE ALPHA'): GameState {
     resources: { ...INITIAL_RESOURCES },
     population: INITIAL_POPULATION,
     board: generateBoard(),
-    logs: ['[INIT] Descent complete. Landing site secured.', '[SYS] Colony management grid online.'],
+    units: [{ id: 1, q: 0, r: 1, path: [], targetHexId: null, state: 'idle' }],
+    cityQueue: [],
+    lastRoll: null,
+    logs: ['[INIT] Descent complete. Colony Hub online.', '[SYS] One worker rover deployed. Click a tile to expand.'],
     milestones: [],
     growthProgress: 0,
     declineProgress: 0,
     lastEventSol: 0,
+    nextId: 2,
   };
 }
 
@@ -75,7 +95,11 @@ export function getHousing(board: HexData[]): number {
 }
 
 export function countBuildings(board: HexData[]): number {
-  return board.filter(h => h.building && h.building !== BuildingType.LANDER).length;
+  return board.filter(h => h.building && h.building !== BuildingType.CITY).length;
+}
+
+export function idleWorkers(units: Unit[]): Unit[] {
+  return units.filter(u => u.state === 'idle');
 }
 
 /** Net per-sol rate for each resource at current power efficiency — shown in the UI. */
@@ -104,30 +128,58 @@ export function getRates(state: GameState): Stockpile {
   return rates;
 }
 
+/** A hex is inside colony reach if it touches a completed structure. */
+export function isWithinReach(board: HexData[], hex: HexData): boolean {
+  return neighbors(board, hex).some(n => n.building !== null);
+}
+
 export function canBuild(state: GameState, hex: HexData, type: BuildingType): { ok: boolean; reason?: string } {
   const def = BUILDINGS[type];
   if (!def.buildable) return { ok: false, reason: 'Not constructible' };
   if (hex.building) return { ok: false, reason: 'Tile occupied' };
+  if (hex.construction) return { ok: false, reason: 'Construction already underway' };
   if (!TERRAIN_STYLES[hex.terrain].buildable) return { ok: false, reason: 'Craters are unbuildable' };
+  if (!isWithinReach(state.board, hex)) {
+    return { ok: false, reason: 'Beyond colony reach — build adjacent to existing structures' };
+  }
   if (def.terrain && !def.terrain.includes(hex.terrain)) {
     return { ok: false, reason: `Requires ${def.terrain.map(t => TERRAIN_STYLES[t].label).join(' or ')}` };
   }
-  if (def.unique && state.board.some(h => h.building === type)) {
-    return { ok: false, reason: 'Already built (one per colony)' };
+  if (def.unique && state.board.some(h => h.building === type || h.construction?.type === type)) {
+    return { ok: false, reason: 'Already built or underway (one per colony)' };
   }
   for (const [kind, amount] of Object.entries(def.cost)) {
     if (state.resources[kind as ResourceKind] < amount) {
       return { ok: false, reason: `Not enough ${kind.toLowerCase()}` };
     }
   }
+  if (idleWorkers(state.units).length === 0) {
+    return { ok: false, reason: 'No idle worker rover — build one at the Colony Hub' };
+  }
   return { ok: true };
 }
 
-export function build(state: GameState, hexId: number, type: BuildingType): GameState {
+/**
+ * Order a construction: pays the cost, marks the site, and dispatches the
+ * nearest idle worker rover to build it.
+ */
+export function orderConstruction(state: GameState, hexId: number, type: BuildingType): GameState {
   const hex = state.board.find(h => h.id === hexId);
   if (!hex) return state;
   const check = canBuild(state, hex, type);
   if (!check.ok) return state;
+
+  const idle = idleWorkers(state.units)
+    .sort((a, b) => hexDistance(a, hex) - hexDistance(b, hex));
+  let worker: Unit | null = null;
+  let path: Coord[] | null = null;
+  for (const candidate of idle) {
+    path = findPath(state.board, candidate, hex);
+    if (path !== null) { worker = candidate; break; }
+  }
+  if (!worker || path === null) {
+    return { ...state, logs: appendLog(state.logs, '⚠ No rover can reach that sector.') };
+  }
 
   const def = BUILDINGS[type];
   const resources = { ...state.resources };
@@ -137,17 +189,41 @@ export function build(state: GameState, hexId: number, type: BuildingType): Game
   return {
     ...state,
     resources,
-    board: state.board.map(h => h.id === hexId ? { ...h, building: type } : h),
-    logs: appendLog(state.logs, `${def.name} constructed in sector ${hexId}.`),
+    board: state.board.map(h => h.id === hexId
+      ? { ...h, construction: { type, remaining: def.buildSols, total: def.buildSols } }
+      : h),
+    units: state.units.map(u => u.id === worker!.id
+      ? { ...u, path: path!, targetHexId: hexId, state: path!.length === 0 ? 'constructing' as const : 'moving' as const }
+      : u),
+    logs: appendLog(state.logs, `Rover dispatched: ${def.name} site marked in sector ${hexId}.`),
   };
 }
 
+/** Demolish a finished building, or cancel an in-progress construction. */
 export function demolish(state: GameState, hexId: number): GameState {
   const hex = state.board.find(h => h.id === hexId);
-  if (!hex || !hex.building || hex.building === BuildingType.LANDER) return state;
+  if (!hex) return state;
+
+  if (hex.construction) {
+    const def = BUILDINGS[hex.construction.type];
+    const resources = { ...state.resources };
+    for (const [kind, amount] of Object.entries(def.cost)) {
+      resources[kind as ResourceKind] += Math.floor(amount / 2);
+    }
+    return {
+      ...state,
+      resources,
+      board: state.board.map(h => h.id === hexId ? { ...h, construction: null } : h),
+      units: state.units.map(u => u.targetHexId === hexId
+        ? { ...u, path: [], targetHexId: null, state: 'idle' as const }
+        : u),
+      logs: appendLog(state.logs, `${def.name} construction cancelled. Half the materials recovered.`),
+    };
+  }
+
+  if (!hex.building || hex.building === BuildingType.CITY) return state;
   const def = BUILDINGS[hex.building];
   const resources = { ...state.resources };
-  // Refund half the metal cost as salvage.
   const metalCost = def.cost[ResourceKind.METAL] ?? 0;
   resources[ResourceKind.METAL] += Math.floor(metalCost / 2);
   return {
@@ -155,6 +231,57 @@ export function demolish(state: GameState, hexId: number): GameState {
     resources,
     board: state.board.map(h => h.id === hexId ? { ...h, building: null } : h),
     logs: appendLog(state.logs, `${def.name} demolished. Salvaged ${Math.floor(metalCost / 2)} metal.`),
+  };
+}
+
+export function canEnqueue(state: GameState, product: CityProduct): { ok: boolean; reason?: string } {
+  const def = CITY_PRODUCTS[product];
+  if (state.cityQueue.length >= MAX_QUEUE) return { ok: false, reason: 'Production queue full' };
+  if (product === CityProduct.WORKER_ROVER) {
+    const queued = state.cityQueue.filter(q => q.product === CityProduct.WORKER_ROVER).length;
+    if (state.units.length + queued >= MAX_WORKERS) {
+      return { ok: false, reason: `Rover fleet at maximum (${MAX_WORKERS})` };
+    }
+  }
+  for (const [kind, amount] of Object.entries(def.cost)) {
+    if (state.resources[kind as ResourceKind] < amount) {
+      return { ok: false, reason: `Not enough ${kind.toLowerCase()}` };
+    }
+  }
+  return { ok: true };
+}
+
+export function enqueueProduct(state: GameState, product: CityProduct): GameState {
+  const check = canEnqueue(state, product);
+  if (!check.ok) return state;
+  const def = CITY_PRODUCTS[product];
+  const resources = { ...state.resources };
+  for (const [kind, amount] of Object.entries(def.cost)) {
+    resources[kind as ResourceKind] -= amount;
+  }
+  const item: QueueItem = { id: state.nextId, product, remaining: def.buildSols };
+  return {
+    ...state,
+    resources,
+    cityQueue: [...state.cityQueue, item],
+    nextId: state.nextId + 1,
+    logs: appendLog(state.logs, `${def.name} added to Colony Hub production.`),
+  };
+}
+
+export function cancelQueueItem(state: GameState, itemId: number): GameState {
+  const item = state.cityQueue.find(q => q.id === itemId);
+  if (!item) return state;
+  const def = CITY_PRODUCTS[item.product];
+  const resources = { ...state.resources };
+  for (const [kind, amount] of Object.entries(def.cost)) {
+    resources[kind as ResourceKind] += amount;
+  }
+  return {
+    ...state,
+    resources,
+    cityQueue: state.cityQueue.filter(q => q.id !== itemId),
+    logs: appendLog(state.logs, `${def.name} order cancelled and refunded.`),
   };
 }
 
@@ -173,11 +300,16 @@ export function tick(state: GameState): TickResult {
   const resources = { ...state.resources };
   let logs = state.logs;
 
-  // Building production and consumption, throttled by power availability.
+  // --- Catan-style dice roll ---
+  const d1 = Math.floor(Math.random() * 6) + 1;
+  const d2 = Math.floor(Math.random() * 6) + 1;
+  const roll = d1 + d2;
+
+  // --- Building production and consumption ---
   for (const hex of state.board) {
     if (!hex.building) continue;
     const def = BUILDINGS[hex.building];
-    // A converter only runs if its inputs are available.
+    const surge = hex.diceValue === roll ? SURGE_MULTIPLIER : 1;
     let inputScale = factor;
     for (const [kind, amount] of Object.entries(def.consumption ?? {})) {
       const available = resources[kind as ResourceKind];
@@ -188,11 +320,11 @@ export function tick(state: GameState): TickResult {
       resources[kind as ResourceKind] = Math.max(0, resources[kind as ResourceKind] - amount * inputScale);
     }
     for (const [kind, amount] of Object.entries(def.production ?? {})) {
-      resources[kind as ResourceKind] += amount * inputScale;
+      resources[kind as ResourceKind] += amount * inputScale * surge;
     }
   }
 
-  // Colonist consumption and tax income.
+  // --- Colonist consumption and tax income ---
   resources[ResourceKind.CREDITS] += state.population * COLONIST_TAX;
   let shortage = false;
   for (const [kind, amount] of Object.entries(COLONIST_NEEDS)) {
@@ -202,7 +334,7 @@ export function tick(state: GameState): TickResult {
     resources[key] = Math.max(0, resources[key] - need);
   }
 
-  // Population dynamics.
+  // --- Population dynamics ---
   let population = state.population;
   let growthProgress = state.growthProgress;
   let declineProgress = state.declineProgress;
@@ -236,13 +368,85 @@ export function tick(state: GameState): TickResult {
     }
   }
 
-  if (factor < 1) {
-    logs = state.sol % 5 === 0 ? appendLog(logs, '⚠ Power grid overloaded — production throttled.') : logs;
+  if (factor < 1 && state.sol % 5 === 0) {
+    logs = appendLog(logs, '⚠ Power grid overloaded — production throttled.');
   }
 
-  // Milestones.
+  // --- City production queue ---
+  let cityQueue = state.cityQueue;
+  let units = state.units;
+  let nextId = state.nextId;
+  if (cityQueue.length > 0) {
+    const head = { ...cityQueue[0], remaining: cityQueue[0].remaining - 1 };
+    if (head.remaining <= 0) {
+      const def = CITY_PRODUCTS[head.product];
+      if (head.product === CityProduct.WORKER_ROVER) {
+        if (population <= (def.popCost ?? 0)) {
+          // Not enough colonists to crew the rover — stall until there are.
+          cityQueue = [{ ...head, remaining: 1 }, ...cityQueue.slice(1)];
+          if (state.sol % 4 === 0) logs = appendLog(logs, '⚠ Rover ready but no colonist free to crew it.');
+        } else {
+          population -= def.popCost ?? 0;
+          units = [...units, { id: nextId, q: 0, r: 0, path: [], targetHexId: null, state: 'idle' }];
+          nextId += 1;
+          cityQueue = cityQueue.slice(1);
+          logs = appendLog(logs, `🚜 Worker Rover rolls off the assembly line. Fleet: ${units.length}.`);
+        }
+      } else {
+        population += def.popGain ?? 0;
+        cityQueue = cityQueue.slice(1);
+        logs = appendLog(logs, `👨‍🚀 Shuttle touchdown! ${def.popGain} colonists join the frontier.`);
+      }
+    } else {
+      cityQueue = [head, ...cityQueue.slice(1)];
+    }
+  }
+
+  // --- Worker movement & construction ---
+  let board = state.board;
+  units = units.map(unit => {
+    if (unit.state === 'moving') {
+      const path = [...unit.path];
+      let { q, r } = unit;
+      for (let step = 0; step < WORKER_SPEED && path.length > 0; step++) {
+        const next = path.shift()!;
+        q = next.q; r = next.r;
+      }
+      if (path.length === 0) {
+        return { ...unit, q, r, path, state: unit.targetHexId !== null ? 'constructing' as const : 'idle' as const };
+      }
+      return { ...unit, q, r, path };
+    }
+    return unit;
+  });
+
+  for (const unit of units) {
+    if (unit.state !== 'constructing' || unit.targetHexId === null) continue;
+    const hex = board.find(h => h.id === unit.targetHexId);
+    if (!hex || !hex.construction) {
+      units = units.map(u => u.id === unit.id ? { ...u, targetHexId: null, state: 'idle' as const } : u);
+      continue;
+    }
+    const remaining = hex.construction.remaining - 1;
+    if (remaining <= 0) {
+      const builtType = hex.construction.type;
+      board = board.map(h => h.id === hex.id ? { ...h, building: builtType, construction: null } : h);
+      // Step the rover off the finished site if a free neighbor exists.
+      const spot = neighbors(board, hex).find(n => n.terrain !== TerrainType.CRATER && !n.building);
+      units = units.map(u => u.id === unit.id
+        ? { ...u, q: spot?.q ?? u.q, r: spot?.r ?? u.r, targetHexId: null, state: 'idle' as const }
+        : u);
+      logs = appendLog(logs, `✅ ${BUILDINGS[builtType].name} completed in sector ${hex.id}.`);
+    } else {
+      board = board.map(h => h.id === hex.id
+        ? { ...h, construction: { ...h.construction!, remaining } }
+        : h);
+    }
+  }
+
+  // --- Milestones ---
   const milestones = [...state.milestones];
-  const buildingCount = countBuildings(state.board);
+  const buildingCount = countBuildings(board);
   for (const m of MILESTONES) {
     if (!milestones.includes(m.id) && m.test(population, buildingCount)) {
       milestones.push(m.id);
@@ -250,10 +454,12 @@ export function tick(state: GameState): TickResult {
     }
   }
 
-  // Random events.
+  // --- Events: a roll of 7 courts disaster (or fortune) ---
   let event: ColonyEvent | null = null;
   let lastEventSol = state.lastEventSol;
-  if (state.sol - lastEventSol >= EVENT_MIN_GAP && Math.random() < EVENT_CHANCE) {
+  const sevenTriggers = roll === 7 && state.sol - lastEventSol >= EVENT_SEVEN_GAP && Math.random() < EVENT_SEVEN_CHANCE;
+  const ambientTriggers = state.sol - lastEventSol >= EVENT_AMBIENT_GAP && Math.random() < EVENT_AMBIENT_CHANCE;
+  if (sevenTriggers || ambientTriggers) {
     event = rollEvent();
     lastEventSol = state.sol;
     for (const [kind, amount] of Object.entries(event.impact ?? {})) {
@@ -269,11 +475,16 @@ export function tick(state: GameState): TickResult {
       sol: state.sol + 1,
       resources,
       population,
+      board,
+      units,
+      cityQueue,
+      lastRoll: { d1, d2 },
       growthProgress,
       declineProgress,
       lastEventSol,
       logs,
       milestones,
+      nextId,
     },
     event,
   };
