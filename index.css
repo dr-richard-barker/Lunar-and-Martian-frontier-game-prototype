@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  background-color: #020408;
+  color: #e2e8f0;
+  font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+.font-orbitron {
+  font-family: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: 0.05em;
+}
+
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+#stars {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  background: radial-gradient(ellipse at bottom, #0d1b2a 0%, #020408 100%);
+}
+.star {
+  position: absolute;
+  background: white;
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: twinkle var(--duration) infinite;
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* Scanline effect */
+.scanlines {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background-size: 100% 4px, 3px 100%;
+  z-index: 100;
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+/* 3D Prism Styles */
+.prism-container {
+  transform-style: preserve-3d;
+  position: absolute;
+}
+.prism-face {
+  position: absolute;
+  backface-visibility: visible;
+}
+.prism-top {
+  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  width: 104px;
+  height: 120px;
+  transform-style: preserve-3d;
+}
+.prism-side {
+  width: 53px;
+  height: 25px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* Terrain Decorations */
+.terrain-crater {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.3);
+  box-shadow: inset 2px 2px 5px rgba(0,0,0,0.8), 1px 1px 2px rgba(255,255,255,0.1);
+}
+.terrain-crystal {
+  position: absolute;
+  width: 10px; height: 30px;
+  background: linear-gradient(to top, #0ea5e9, #bae6fd);
+  transform-style: preserve-3d;
+  clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+}
+
+/* Building base platform */
+.building-pad {
+  position: absolute;
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(15, 23, 42, 0.9) 30%, rgba(15, 23, 42, 0.3) 70%, transparent 100%);
+  border: 2px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.25), inset 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+/* Event modal entrance */
+.event-pop {
+  animation: event-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes event-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
