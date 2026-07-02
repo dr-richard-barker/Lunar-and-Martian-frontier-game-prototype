@@ -5,6 +5,26 @@ import { BuildingModel, ConstructionSite } from './Structure3D';
 
 export type SurgeKind = 'none' | 'ring' | 'gold';
 
+/** Grainy regolith noise, inlined as SVG so it stays crisp at any zoom. */
+const NOISE =
+  'url("data:image/svg+xml;utf8,<svg xmlns=%27http://www.w3.org/2000/svg%27 width=%27120%27 height=%27120%27><filter id=%27n%27><feTurbulence type=%27fractalNoise%27 baseFrequency=%270.85%27 numOctaves=%272%27/><feColorMatrix type=%27matrix%27 values=%270 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.6 0.6 0.6 0 0%27/></filter><rect width=%27120%27 height=%27120%27 filter=%27url(%23n)%27 opacity=%270.5%27/></svg>")';
+
+/** Layered material per terrain: mineral pattern + directional shading + noise. */
+const TERRAIN_SURFACE: Record<TerrainType, string> = {
+  [TerrainType.REGOLITH]:
+    `radial-gradient(circle at 35% 28%, rgba(203,213,225,0.28), transparent 55%), radial-gradient(circle at 70% 75%, rgba(2,6,23,0.35), transparent 60%), ${NOISE}`,
+  [TerrainType.ICE]:
+    `repeating-linear-gradient(64deg, rgba(224,242,254,0.4) 0 2px, transparent 2px 13px), repeating-linear-gradient(-40deg, rgba(186,230,253,0.25) 0 1.5px, transparent 1.5px 17px), radial-gradient(circle at 45% 40%, rgba(224,242,254,0.35), transparent 60%), ${NOISE}`,
+  [TerrainType.ORES]:
+    `repeating-linear-gradient(115deg, rgba(251,146,60,0.5) 0 2px, transparent 2px 16px), repeating-linear-gradient(28deg, rgba(153,27,27,0.5) 0 3px, transparent 3px 21px), radial-gradient(circle at 60% 55%, rgba(249,115,22,0.35), transparent 55%), ${NOISE}`,
+  [TerrainType.SILICATES]:
+    `repeating-conic-gradient(from 15deg, rgba(254,243,199,0.3) 0 16deg, rgba(146,64,14,0.3) 16deg 34deg), radial-gradient(circle at 50% 45%, rgba(253,230,138,0.3), transparent 62%), ${NOISE}`,
+  [TerrainType.HE3]:
+    `repeating-linear-gradient(32deg, rgba(167,139,250,0.4) 0 2px, transparent 2px 15px), repeating-linear-gradient(-58deg, rgba(232,121,249,0.25) 0 1.5px, transparent 1.5px 19px), radial-gradient(circle at 50% 55%, rgba(139,92,246,0.4), transparent 58%), ${NOISE}`,
+  [TerrainType.CRATER]:
+    `radial-gradient(circle at 50% 52%, rgba(2,6,23,0.75) 0%, rgba(2,6,23,0.35) 45%, transparent 70%), ${NOISE}`,
+};
+
 interface HexagonProps {
   data: HexData;
   selected: boolean;
@@ -123,7 +143,7 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSe
         style={{
           backgroundColor: style.color,
           transform: `translate(-50%, -50%) translateZ(0px)`,
-          backgroundImage: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 2px, transparent 2px, transparent 6px)',
+          backgroundImage: TERRAIN_SURFACE[terrain],
         }}
       >
         {terrainFeatures}

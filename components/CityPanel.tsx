@@ -16,7 +16,7 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
   const idle = idleWorkers(gameState.units).length;
 
   return (
-    <div className="absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-sky-700 rounded-2xl shadow-[0_0_40px_rgba(14,165,233,0.15)] pointer-events-auto p-5 z-40">
+    <div className="hud-panel absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-sky-700 rounded-2xl shadow-[0_0_40px_rgba(14,165,233,0.15)] pointer-events-auto p-5 z-40">
       {/* Header */}
       <div className="flex justify-between items-start mb-4 pb-3 border-b border-slate-700">
         <div>

@@ -40,7 +40,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
     >
       {/* Top Header */}
       <div className="flex justify-between items-start gap-4">
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
+        <div className="hud-panel bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
           <h1 className="text-2xl font-orbitron text-sky-400 tracking-wider">{gameState.colonyName}</h1>
           <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] mt-1">Lunar Frontier · Sandbox Colony</p>
           <div className="mt-3 flex gap-5 text-center">
@@ -76,7 +76,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         </div>
 
         {/* Transmission Log */}
-        <div className="w-80 bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
+        <div className="hud-panel w-80 bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Comm Link</h3>
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -115,7 +115,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
       {/* Bottom Footer: Resources, Dice & Controls */}
       <div className="flex justify-between items-end gap-4">
         {/* Resources */}
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-700 p-5 rounded-3xl pointer-events-auto flex gap-7 shadow-2xl">
+        <div className="hud-panel bg-slate-900/90 backdrop-blur-xl border border-slate-700 p-5 rounded-3xl pointer-events-auto flex gap-7 shadow-2xl">
           {(Object.keys(RESOURCE_STYLES) as ResourceKind[]).map(kind => {
             const rate = rates[kind];
             return (
