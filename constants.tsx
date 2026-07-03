@@ -8,7 +8,7 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v2';
+export const SAVE_KEY = 'lunar-frontier-save-v3';
 
 /** Catan-style token pool, cycled over the board's non-crater tiles. */
 export const DICE_TOKEN_POOL = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
@@ -18,8 +18,10 @@ export const SURGE_MULTIPLIER = 2;
 
 export const MAX_WORKERS = 5;
 export const MAX_QUEUE = 4;
-/** Hexes a worker rover travels per sol. */
+/** Hexes a worker rover travels per sol (off-rail). */
 export const WORKER_SPEED = 2;
+/** Hexes per sol when the whole stretch runs on maglev track. */
+export const RAIL_SPEED = 3;
 
 export const TERRAIN_STYLES: Record<TerrainType, { color: string; icon: string; label: string; buildable: boolean }> = {
   [TerrainType.REGOLITH]: { color: '#64748b', icon: '🌑', label: 'Regolith Plain', buildable: true },
@@ -49,6 +51,15 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     production: { [ResourceKind.METAL]: 0.25, [ResourceKind.OXYGEN]: 0.5 },
     buildable: false,
     buildSols: 0,
+  },
+  [BuildingType.ROAD]: {
+    name: 'Maglev Track',
+    icon: '🛤️',
+    description: 'Levitation rail segment. Structures only operate next to the Hub or a connected track — lay rails to grow the colony.',
+    cost: { [ResourceKind.METAL]: 4, [ResourceKind.CREDITS]: 15 },
+    power: 0,
+    buildable: true,
+    buildSols: 1,
   },
   [BuildingType.SOLAR_ARRAY]: {
     name: 'Solar Array',
@@ -177,7 +188,7 @@ export const DECLINE_TICKS = 3;
 
 export const INITIAL_RESOURCES: Stockpile = {
   [ResourceKind.CREDITS]: 600,
-  [ResourceKind.METAL]: 60,
+  [ResourceKind.METAL]: 85,
   [ResourceKind.WATER]: 50,
   [ResourceKind.OXYGEN]: 40,
   [ResourceKind.FOOD]: 50,

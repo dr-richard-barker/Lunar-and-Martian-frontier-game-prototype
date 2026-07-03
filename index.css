@@ -285,6 +285,64 @@ body {
   100% { opacity: 0; transform: rotateZ(calc(var(--rz, 0) * -1deg)) translateZ(100px); }
 }
 
+/* Maglev track — flat rails drawn on the tile surface */
+.rail-arm {
+  position: absolute;
+  left: 52px;
+  top: 53px;
+  width: 54px;
+  height: 14px;
+  transform-origin: 0 50%;
+  background:
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.55) 0 2px, transparent 2px 9px),
+    linear-gradient(180deg,
+      transparent 0 1.5px,
+      #22d3ee 1.5px 3.5px,
+      #1e293b 3.5px 10.5px,
+      #22d3ee 10.5px 12.5px,
+      transparent 12.5px 14px);
+  box-shadow: 0 0 8px rgba(34, 211, 238, 0.45);
+}
+.rail-pad {
+  position: absolute;
+  left: 52px;
+  top: 60px;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #1e293b 45%, #0f172a 70%);
+  border: 2px solid rgba(34, 211, 238, 0.65);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.5), inset 0 0 6px rgba(0, 0, 0, 0.7);
+}
+
+/* Structures cut off from the maglev network */
+.offline-shroud {
+  position: absolute;
+  inset: 0;
+  background: rgba(127, 29, 29, 0.28);
+  clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+}
+.offline-decal {
+  position: absolute;
+  left: 50%;
+  top: 14px;
+  width: 70px;
+  margin-left: -35px;
+  text-align: center;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #fca5a5;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  animation: offline-blink 1.2s steps(1) infinite;
+  transform: rotateZ(calc(var(--rz, 0) * -1deg));
+}
+@keyframes offline-blink {
+  0%, 60% { opacity: 1; }
+  61%, 100% { opacity: 0.25; }
+}
+
 /* Cinematic vignette */
 .vignette {
   position: fixed;

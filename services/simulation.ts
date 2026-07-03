@@ -5,10 +5,10 @@ import {
 import {
   BUILDINGS, TERRAIN_STYLES, BOARD_RADIUS, SILICATE_SOLAR_BONUS, COLONIST_NEEDS, COLONIST_TAX,
   GROWTH_TICKS, DECLINE_TICKS, INITIAL_RESOURCES, INITIAL_POPULATION, MILESTONES,
-  DICE_TOKEN_POOL, SURGE_MULTIPLIER, MAX_WORKERS, MAX_QUEUE, WORKER_SPEED, CITY_PRODUCTS,
+  DICE_TOKEN_POOL, SURGE_MULTIPLIER, MAX_WORKERS, MAX_QUEUE, WORKER_SPEED, RAIL_SPEED, CITY_PRODUCTS,
 } from '../constants';
 import { rollEvent } from './events';
-import { neighbors, findPath, hexDistance } from './hexgrid';
+import { neighbors, findPath, hexDistance, boardMap, hexKey, HEX_DIRS } from './hexgrid';
 
 const EVENT_AMBIENT_CHANCE = 0.02;
 const EVENT_AMBIENT_GAP = 14;
@@ -74,11 +74,48 @@ export function newGame(colonyName = 'FRONTIER BASE ALPHA'): GameState {
   };
 }
 
+/**
+ * The maglev network and everything it services. Returns the ids of all
+ * OPERATIONAL hexes: the Hub, every track segment connected to it, and
+ * every building adjacent to the Hub or a connected track. Buildings cut
+ * off from the network are offline — they produce, consume, and house
+ * nothing until reconnected.
+ */
+export function getActiveSet(board: HexData[]): Set<number> {
+  const active = new Set<number>();
+  const city = board.find(h => h.building === BuildingType.CITY);
+  if (!city) return active;
+  active.add(city.id);
+
+  const map = boardMap(board);
+  const queue: HexData[] = [city];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const dir of HEX_DIRS) {
+      const next = map.get(hexKey({ q: current.q + dir.q, r: current.r + dir.r }));
+      if (next && next.building === BuildingType.ROAD && !active.has(next.id)) {
+        active.add(next.id);
+        queue.push(next);
+      }
+    }
+  }
+
+  for (const hex of board) {
+    if (!hex.building || active.has(hex.id)) continue;
+    const served = neighbors(board, hex).some(n =>
+      n.building === BuildingType.CITY || (n.building === BuildingType.ROAD && active.has(n.id))
+    );
+    if (served) active.add(hex.id);
+  }
+  return active;
+}
+
 export function getPowerReport(board: HexData[]): PowerReport {
+  const active = getActiveSet(board);
   let generated = 0;
   let consumed = 0;
   for (const hex of board) {
-    if (!hex.building) continue;
+    if (!hex.building || !active.has(hex.id)) continue;
     let power = BUILDINGS[hex.building].power;
     if (hex.building === BuildingType.SOLAR_ARRAY && hex.terrain === TerrainType.SILICATES) {
       power += SILICATE_SOLAR_BONUS;
@@ -91,11 +128,16 @@ export function getPowerReport(board: HexData[]): PowerReport {
 }
 
 export function getHousing(board: HexData[]): number {
-  return board.reduce((sum, hex) => sum + (hex.building ? (BUILDINGS[hex.building].housing ?? 0) : 0), 0);
+  const active = getActiveSet(board);
+  return board.reduce((sum, hex) =>
+    sum + (hex.building && active.has(hex.id) ? (BUILDINGS[hex.building].housing ?? 0) : 0), 0);
 }
 
+/** Structures excluding the Hub and track segments. */
 export function countBuildings(board: HexData[]): number {
-  return board.filter(h => h.building && h.building !== BuildingType.CITY).length;
+  return board.filter(h =>
+    h.building && h.building !== BuildingType.CITY && h.building !== BuildingType.ROAD
+  ).length;
 }
 
 export function idleWorkers(units: Unit[]): Unit[] {
@@ -105,6 +147,7 @@ export function idleWorkers(units: Unit[]): Unit[] {
 /** Net per-sol rate for each resource at current power efficiency — shown in the UI. */
 export function getRates(state: GameState): Stockpile {
   const { factor } = getPowerReport(state.board);
+  const active = getActiveSet(state.board);
   const rates: Stockpile = {
     [ResourceKind.CREDITS]: state.population * COLONIST_TAX,
     [ResourceKind.METAL]: 0,
@@ -113,7 +156,7 @@ export function getRates(state: GameState): Stockpile {
     [ResourceKind.FOOD]: 0,
   };
   for (const hex of state.board) {
-    if (!hex.building) continue;
+    if (!hex.building || !active.has(hex.id)) continue;
     const def = BUILDINGS[hex.building];
     for (const [kind, amount] of Object.entries(def.production ?? {})) {
       rates[kind as ResourceKind] += amount * factor;
@@ -128,9 +171,15 @@ export function getRates(state: GameState): Stockpile {
   return rates;
 }
 
-/** A hex is inside colony reach if it touches a completed structure. */
+/**
+ * A hex is serviced when it touches the Hub or a connected maglev track —
+ * the placement requirement for every structure, tracks included.
+ */
 export function isWithinReach(board: HexData[], hex: HexData): boolean {
-  return neighbors(board, hex).some(n => n.building !== null);
+  const active = getActiveSet(board);
+  return neighbors(board, hex).some(n =>
+    n.building === BuildingType.CITY || (n.building === BuildingType.ROAD && active.has(n.id))
+  );
 }
 
 export function canBuild(state: GameState, hex: HexData, type: BuildingType): { ok: boolean; reason?: string } {
@@ -140,7 +189,7 @@ export function canBuild(state: GameState, hex: HexData, type: BuildingType): { 
   if (hex.construction) return { ok: false, reason: 'Construction already underway' };
   if (!TERRAIN_STYLES[hex.terrain].buildable) return { ok: false, reason: 'Craters are unbuildable' };
   if (!isWithinReach(state.board, hex)) {
-    return { ok: false, reason: 'Beyond colony reach — build adjacent to existing structures' };
+    return { ok: false, reason: 'Off the maglev network — extend track from the Colony Hub first' };
   }
   if (def.terrain && !def.terrain.includes(hex.terrain)) {
     return { ok: false, reason: `Requires ${def.terrain.map(t => TERRAIN_STYLES[t].label).join(' or ')}` };
@@ -305,9 +354,10 @@ export function tick(state: GameState): TickResult {
   const d2 = Math.floor(Math.random() * 6) + 1;
   const roll = d1 + d2;
 
-  // --- Building production and consumption ---
+  // --- Building production and consumption (offline structures are inert) ---
+  const activeSet = getActiveSet(state.board);
   for (const hex of state.board) {
-    if (!hex.building) continue;
+    if (!hex.building || !activeSet.has(hex.id)) continue;
     const def = BUILDINGS[hex.building];
     const surge = hex.diceValue === roll ? SURGE_MULTIPLIER : 1;
     let inputScale = factor;
@@ -404,11 +454,19 @@ export function tick(state: GameState): TickResult {
 
   // --- Worker movement & construction ---
   let board = state.board;
+  const moveMap = boardMap(board);
   units = units.map(unit => {
     if (unit.state === 'moving') {
       const path = [...unit.path];
       let { q, r } = unit;
-      for (let step = 0; step < WORKER_SPEED && path.length > 0; step++) {
+      // Maglev boost: a full stretch of track ahead lets the rover ride rails.
+      const lookahead = path.slice(0, RAIL_SPEED);
+      const onRails = lookahead.length === RAIL_SPEED && lookahead.every(c => {
+        const h = moveMap.get(hexKey(c));
+        return h && (h.building === BuildingType.ROAD || h.building === BuildingType.CITY);
+      });
+      const speed = onRails ? RAIL_SPEED : WORKER_SPEED;
+      for (let step = 0; step < speed && path.length > 0; step++) {
         const next = path.shift()!;
         q = next.q; r = next.r;
       }

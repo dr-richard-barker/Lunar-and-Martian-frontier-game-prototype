@@ -8,8 +8,9 @@ import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind } from 
 import { TICK_MS, HEX_RADIUS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
   newGame, tick, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
-  countBuildings,
+  countBuildings, getActiveSet,
 } from './services/simulation';
+import { boardMap, hexKey, HEX_DIRS } from './services/hexgrid';
 import { saveGame, loadGame } from './services/storage';
 import { nextLore } from './services/events';
 import { sfx, unlock, isMuted, setMuted } from './services/sound';
@@ -68,12 +69,13 @@ const App: React.FC = () => {
         if (result.state.population > prev.population || result.state.units.length > prev.units.length) sfx.arrive();
         if (result.state.population < prev.population) sfx.loss();
 
-        // Floating yield numbers over surged tiles.
+        // Floating yield numbers over surged tiles (online buildings only).
         const roll = result.state.lastRoll ? result.state.lastRoll.d1 + result.state.lastRoll.d2 : null;
         const fresh: YieldPopup[] = [];
+        const surgeActive = getActiveSet(result.state.board);
         if (roll !== null) {
           for (const hex of result.state.board) {
-            if (hex.diceValue !== roll || !hex.building) continue;
+            if (hex.diceValue !== roll || !hex.building || !surgeActive.has(hex.id)) continue;
             const production = BUILDINGS[hex.building].production;
             if (!production) continue;
             const [kind, amount] = Object.entries(production)[0];
@@ -250,6 +252,24 @@ const App: React.FC = () => {
     return ids;
   }, [gameState.board]);
 
+  // Maglev network state: which structures are online, and which way each
+  // track segment connects (for rail rendering).
+  const activeIds = useMemo(() => getActiveSet(gameState.board), [gameState.board]);
+  const roadKeys = useMemo(() => {
+    const keys = new Map<number, string>();
+    const map = boardMap(gameState.board);
+    for (const hex of gameState.board) {
+      if (hex.building !== BuildingType.ROAD) continue;
+      const dirs: number[] = [];
+      HEX_DIRS.forEach((d, i) => {
+        const n = map.get(hexKey({ q: hex.q + d.q, r: hex.r + d.r }));
+        if (n && (n.building === BuildingType.ROAD || n.building === BuildingType.CITY)) dirs.push(i);
+      });
+      keys.set(hex.id, dirs.join(','));
+    }
+    return keys;
+  }, [gameState.board]);
+
   const surgeFor = (hexId: number): SurgeKind => {
     const hex = gameState.board[hexId];
     if (rollSum === null || hex.diceValue !== rollSum) return 'none';
@@ -303,6 +323,8 @@ const App: React.FC = () => {
                 surge={surgeFor(hex.id)}
                 onSelect={handleSelectHex}
                 onHover={setHoveredHexId}
+                roadKey={roadKeys.get(hex.id) ?? ''}
+                offline={!!hex.building && !activeIds.has(hex.id)}
               />
             ))}
 
@@ -356,6 +378,7 @@ const App: React.FC = () => {
           Sector {hoveredHex.id} · {TERRAIN_STYLES[hoveredHex.terrain].label}
           {hoveredHex.diceValue !== null && <span className="text-amber-300"> · Yield {hoveredHex.diceValue}</span>}
           {hoveredHex.building && <span className="text-sky-300"> · {BUILDINGS[hoveredHex.building].name}</span>}
+          {hoveredHex.building && !activeIds.has(hoveredHex.id) && <span className="text-red-400"> · OFFLINE</span>}
           {hoveredHex.construction && <span className="text-amber-400"> · Building {BUILDINGS[hoveredHex.construction.type].name}</span>}
         </div>
       )}

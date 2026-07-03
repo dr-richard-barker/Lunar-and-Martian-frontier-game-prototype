@@ -26,8 +26,10 @@ Best played on a desktop browser with a mouse.
 - **Catan-style yields** — every tile carries a number token (2–12, red 6/8). Two dice
   roll each sol; tiles matching the roll **surge and yield double**. A roll of 7
   courts a colony event: solar flares, meteorite showers, supply capsules...
-- **Settlement growth** — you can only build **adjacent to your existing colony**.
-  Expand ring by ring toward the ice, ore, and helium-3 your economy needs.
+- **Maglev network (Catan roads)** — structures only operate **next to the
+  Colony Hub or a connected 🛤️ Maglev Track**. Lay cheap track segments outward
+  to reach the ice, ore, and helium-3 your economy needs; cut the line and
+  everything downstream goes OFFLINE. Rovers ride the rails at higher speed.
 - **SimCity survival loop** — colonists consume food, water, and oxygen every sol and
   pay taxes. Ice Extractors make water; Oxygenators and Greenhouses turn it into air
   and food; Habitats add housing. If demand outstrips the power grid, everything

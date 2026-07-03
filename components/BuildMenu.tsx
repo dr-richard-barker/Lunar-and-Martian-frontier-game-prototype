@@ -100,7 +100,7 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
       {/* Out of reach */}
       {!currentBuilding && !hex.construction && terrain.buildable && !withinReach && (
         <p className="text-xs text-amber-400/80 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-          ⛺ Beyond colony reach. Structures must be built adjacent to your existing colony — expand outward, one ring at a time.
+          🛤️ Off the maglev network. Structures only work next to the Colony Hub or a connected track — lay Maglev Track segments outward to reach this sector.
         </p>
       )}
 

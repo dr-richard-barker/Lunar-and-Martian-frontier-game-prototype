@@ -1,7 +1,10 @@
 import React, { useMemo } from 'react';
-import { HexData, TerrainType } from '../types';
+import { HexData, TerrainType, BuildingType } from '../types';
 import { HEX_RADIUS, TERRAIN_STYLES } from '../constants';
 import { BuildingModel, ConstructionSite } from './Structure3D';
+
+/** Screen angle (deg) for each HEX_DIRS index — used to orient rail arms. */
+const DIR_ANGLES = [0, -60, -120, 180, 120, 60];
 
 export type SurgeKind = 'none' | 'ring' | 'gold';
 
@@ -44,9 +47,13 @@ interface HexagonProps {
   surge: SurgeKind;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
+  /** For track tiles: comma-joined HEX_DIRS indices of connected neighbors. */
+  roadKey: string;
+  /** Building is cut off from the maglev network. */
+  offline: boolean;
 }
 
-const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSelect, onHover }) => {
+const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSelect, onHover, roadKey, offline }) => {
   const { q, r, terrain, building, construction, diceValue } = data;
 
   const x = HEX_RADIUS * Math.sqrt(3) * (q + r / 2);
@@ -186,10 +193,28 @@ const Hexagon: React.FC<HexagonProps> = ({ data, selected, frontier, surge, onSe
             {Math.round(((construction.total - construction.remaining) / construction.total) * 100)}%
           </div>
         )}
+
+        {/* Maglev track — flat rails toward each connected neighbor */}
+        {building === BuildingType.ROAD && (
+          <>
+            {(roadKey ? roadKey.split(',') : []).map(idx => (
+              <div
+                key={idx}
+                className="rail-arm"
+                style={{ transform: `rotate(${DIR_ANGLES[Number(idx)]}deg)` }}
+              />
+            ))}
+            <div className="rail-pad" />
+          </>
+        )}
+
+        {/* Offline shroud */}
+        {offline && <div className="offline-shroud" />}
+        {offline && <div className="offline-decal">⚠ OFFLINE</div>}
       </div>
 
       {/* 3D structure — sibling of the clipped top face so it can extrude */}
-      {(building || construction) && (
+      {((building && building !== BuildingType.ROAD) || construction) && (
         <div
           className="structure-anchor"
           style={{ transform: 'translateZ(0.5px)' }}

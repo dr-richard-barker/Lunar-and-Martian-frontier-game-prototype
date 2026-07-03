@@ -433,6 +433,8 @@ const LaunchPadModel: React.FC = () => (
 
 const MODELS: Record<BuildingType, React.FC> = {
   [BuildingType.CITY]: CityModel,
+  // Track is rendered flat on the tile surface by Hexagon, not as a 3D model.
+  [BuildingType.ROAD]: () => null,
   [BuildingType.SOLAR_ARRAY]: SolarModel,
   [BuildingType.HABITAT]: HabitatModel,
   [BuildingType.ICE_EXTRACTOR]: IceExtractorModel,

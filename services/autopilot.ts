@@ -54,13 +54,10 @@ function genericSite(state: GameState, preferred?: TerrainType): HexData | null 
 }
 
 /**
- * When a needed mineral terrain exists but is outside colony reach, pick the
- * open reachable tile closest to it — a stepping stone to expand toward.
+ * Pick the serviced open tile closest to any of the given targets — the
+ * next maglev track segment on the way there.
  */
-function steppingStoneToward(state: GameState, terrain: TerrainType): HexData | null {
-  const targets = state.board.filter(h =>
-    h.terrain === terrain && !h.building && !h.construction && !isWithinReach(state.board, h)
-  );
+function railSiteToward(state: GameState, targets: HexData[]): HexData | null {
   if (targets.length === 0) return null;
   let best: HexData | null = null;
   let bestScore = Infinity;
@@ -73,7 +70,7 @@ function steppingStoneToward(state: GameState, terrain: TerrainType): HexData | 
   return best;
 }
 
-/** Claim a resource tile directly, or expand toward it with a solar stepping stone. */
+/** Claim a resource tile directly, or lay maglev track toward the nearest one. */
 function reachFor(
   state: GameState,
   type: BuildingType,
@@ -82,10 +79,13 @@ function reachFor(
   lifeSupport = false,
 ): GameState | null {
   const site = resourceSite(state, terrain);
-  // A target tile is already in reach: build there or save up — never burn
-  // materials on a stepping stone we don't need.
+  // A target tile is already serviced: build there or save up — never burn
+  // materials on track we don't need yet.
   if (site) return tryOrder(state, type, site, floor, lifeSupport);
-  return tryOrder(state, BuildingType.SOLAR_ARRAY, steppingStoneToward(state, terrain), floor, lifeSupport);
+  const targets = state.board.filter(h =>
+    h.terrain === terrain && !h.building && !h.construction && !isWithinReach(state.board, h)
+  );
+  return tryOrder(state, BuildingType.ROAD, railSiteToward(state, targets), floor, lifeSupport);
 }
 
 function hasMine(state: GameState): boolean {
@@ -110,9 +110,9 @@ function tryOrder(
   if (!site) return null;
   const creditCost = BUILDINGS[type].cost[ResourceKind.CREDITS] ?? 0;
   if (state.resources[ResourceKind.CREDITS] < creditCost + floor) return null;
-  // The mining reserve only gates comfort builds — survival always outranks
-  // saving up for a future rig.
-  if (!lifeSupport && type !== BuildingType.MINING_RIG) {
+  // The mining reserve only gates comfort builds — survival and cheap track
+  // always outrank saving up for a future rig.
+  if (!lifeSupport && type !== BuildingType.MINING_RIG && type !== BuildingType.ROAD) {
     const metalCost = BUILDINGS[type].cost[ResourceKind.METAL] ?? 0;
     if (state.resources[ResourceKind.METAL] < metalCost + metalReserve(state)) return null;
   }
@@ -188,9 +188,12 @@ function buildStep(state: GameState): GameState {
   const power = getPowerReport(state.board);
   const housing = getHousing(state.board);
   const R = state.resources;
+  // Rates only improve when a build completes — never double-order a type
+  // that is already under construction, that just burns the budget twice.
+  const pending = (type: BuildingType) => state.board.some(h => h.construction?.type === type);
 
   // 1. Power — everything else throttles without it.
-  if (power.factor < 1 || power.generated - power.consumed < 3) {
+  if ((power.factor < 1 || power.generated - power.consumed < 3) && !pending(BuildingType.SOLAR_ARRAY)) {
     const next = tryOrder(state, BuildingType.SOLAR_ARRAY, genericSite(state, TerrainType.SILICATES));
     if (next) return next;
   }
@@ -222,17 +225,19 @@ function buildStep(state: GameState): GameState {
   const lifeTasks: { kind: ResourceKind; act: () => GameState | null }[] = [
     {
       kind: ResourceKind.WATER,
-      act: () => reachFor(state, BuildingType.ICE_EXTRACTOR, TerrainType.ICE, 0, true),
+      act: () => pending(BuildingType.ICE_EXTRACTOR)
+        ? null
+        : reachFor(state, BuildingType.ICE_EXTRACTOR, TerrainType.ICE, 0, true),
     },
     {
       kind: ResourceKind.OXYGEN,
-      act: () => (canSpendWater || R[ResourceKind.OXYGEN] < 18)
+      act: () => !pending(BuildingType.OXYGENATOR) && (canSpendWater || R[ResourceKind.OXYGEN] < 18)
         ? tryOrder(state, BuildingType.OXYGENATOR, genericSite(state), 0, true)
         : null,
     },
     {
       kind: ResourceKind.FOOD,
-      act: () => (canSpendWater || R[ResourceKind.FOOD] < 18)
+      act: () => !pending(BuildingType.GREENHOUSE) && (canSpendWater || R[ResourceKind.FOOD] < 18)
         ? tryOrder(state, BuildingType.GREENHOUSE, genericSite(state), 0, true)
         : null,
     },
@@ -250,7 +255,7 @@ function buildStep(state: GameState): GameState {
     rates[ResourceKind.WATER] > 0.15 &&
     rates[ResourceKind.OXYGEN] > 0.15 &&
     rates[ResourceKind.FOOD] > 0.15;
-  if (lifeOk && state.population >= housing - 1) {
+  if (lifeOk && state.population >= housing - 1 && !pending(BuildingType.HABITAT)) {
     const next = tryOrder(state, BuildingType.HABITAT, genericSite(state), CREDIT_FLOOR);
     if (next) return next;
   }
@@ -260,7 +265,7 @@ function buildStep(state: GameState): GameState {
     const next = reachFor(state, BuildingType.MINING_RIG, TerrainType.ORES, 150);
     if (next) return next;
   }
-  if (R[ResourceKind.CREDITS] > 420) {
+  if (R[ResourceKind.CREDITS] > 420 && !pending(BuildingType.HE3_EXTRACTOR)) {
     const next = reachFor(state, BuildingType.HE3_EXTRACTOR, TerrainType.HE3, 80);
     if (next) return next;
   }
@@ -269,8 +274,18 @@ function buildStep(state: GameState): GameState {
     if (next) return next;
   }
   // 9. Prosperity fallback — keep the city growing.
-  if (R[ResourceKind.CREDITS] > 700 && housing < 42) {
+  if (R[ResourceKind.CREDITS] > 700 && housing < 42 && !pending(BuildingType.HABITAT)) {
     const next = tryOrder(state, BuildingType.HABITAT, genericSite(state), CREDIT_FLOOR);
+    if (next) return next;
+  }
+  // 10. Running out of serviced land — extend the maglev network outward.
+  if (openSites(state).length < 2) {
+    const frontier = state.board.filter(h =>
+      !h.building && !h.construction &&
+      TERRAIN_STYLES[h.terrain].buildable &&
+      !isWithinReach(state.board, h)
+    );
+    const next = tryOrder(state, BuildingType.ROAD, railSiteToward(state, frontier));
     if (next) return next;
   }
   return state;

@@ -9,6 +9,7 @@ export enum TerrainType {
 
 export enum BuildingType {
   CITY = 'CITY',
+  ROAD = 'ROAD',
   SOLAR_ARRAY = 'SOLAR_ARRAY',
   HABITAT = 'HABITAT',
   ICE_EXTRACTOR = 'ICE_EXTRACTOR',
