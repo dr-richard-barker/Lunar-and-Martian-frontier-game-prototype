@@ -42,10 +42,11 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
   [BuildingType.CITY]: {
     name: 'Colony Hub',
     icon: '🏛️',
-    description: 'The beating heart of the frontier. Trains worker rovers and requests shuttles from Earth.',
+    description: 'The beating heart of the frontier. Trains worker rovers, requests shuttles from Earth, and its recyclers eke out a trickle of metal and oxygen.',
     cost: {},
     power: 8,
     housing: 6,
+    production: { [ResourceKind.METAL]: 0.25, [ResourceKind.OXYGEN]: 0.5 },
     buildable: false,
     buildSols: 0,
   },
@@ -94,7 +95,7 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     name: 'Greenhouse',
     icon: '🌱',
     description: 'Hydroponic farm dome. Grows food and releases a little oxygen.',
-    cost: { [ResourceKind.METAL]: 20, [ResourceKind.CREDITS]: 140 },
+    cost: { [ResourceKind.METAL]: 15, [ResourceKind.CREDITS]: 140 },
     power: -3,
     consumption: { [ResourceKind.WATER]: 0.8 },
     production: { [ResourceKind.FOOD]: 1.4, [ResourceKind.OXYGEN]: 0.2 },
@@ -177,9 +178,9 @@ export const DECLINE_TICKS = 3;
 export const INITIAL_RESOURCES: Stockpile = {
   [ResourceKind.CREDITS]: 600,
   [ResourceKind.METAL]: 60,
-  [ResourceKind.WATER]: 25,
-  [ResourceKind.OXYGEN]: 25,
-  [ResourceKind.FOOD]: 25,
+  [ResourceKind.WATER]: 50,
+  [ResourceKind.OXYGEN]: 40,
+  [ResourceKind.FOOD]: 50,
 };
 
 export const INITIAL_POPULATION = 5;

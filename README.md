@@ -35,6 +35,9 @@ Best played on a desktop browser with a mouse.
 - **Terrain** — 🌑 regolith (open construction), ❄️ ice deposits, 🌋 ore veins,
   💎 silicate flats, ⚡ helium-3 fields, ☄️ craters (unbuildable and impassable).
 - **Camera** — drag to orbit, scroll to zoom.
+- **🤖 Autoplay** — hit AUTOPLAY and watch the base build itself: an AI director
+  prioritizes power, water, oxygen, food, housing, then industry, dispatches
+  rovers, and orders shuttles while the camera slowly orbits the colony.
 - The game **autosaves** to your browser (localStorage). Use 💾 SAVE anytime, or
   🚀 NEW COLONY to start over. Time controls: pause, 1×, 2×, 4×.
 

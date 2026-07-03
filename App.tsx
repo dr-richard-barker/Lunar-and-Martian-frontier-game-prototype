@@ -13,6 +13,7 @@ import {
 import { saveGame, loadGame } from './services/storage';
 import { nextLore } from './services/events';
 import { sfx, unlock, isMuted, setMuted } from './services/sound';
+import { autopilotAct } from './services/autopilot';
 
 interface YieldPopup {
   id: number;
@@ -35,6 +36,9 @@ const App: React.FC = () => {
   const [muted, setMutedState] = useState(isMuted());
   const [hoveredHexId, setHoveredHexId] = useState<number | null>(null);
   const [popups, setPopups] = useState<YieldPopup[]>([]);
+  const [autoplay, setAutoplay] = useState(() => {
+    try { return localStorage.getItem('lf-autoplay') === '1'; } catch { return false; }
+  });
 
   const isDragging = useRef(false);
   const dragDistance = useRef(0);
@@ -50,6 +54,8 @@ const App: React.FC = () => {
       if (document.hidden) return;
       setGameState(prev => {
         const result = tick(prev);
+        // Autopilot: let the AI director place orders after the sol resolves.
+        if (autoplay) result.state = autopilotAct(result.state);
         if (result.event) {
           setActiveEvent(result.event);
           sfx.alert();
@@ -88,7 +94,17 @@ const App: React.FC = () => {
       });
     }, TICK_MS / speed);
     return () => clearInterval(interval);
-  }, [speed]);
+  }, [speed, autoplay]);
+
+  // --- Cinematic slow orbit while autopilot runs ---
+  useEffect(() => {
+    if (!autoplay) return;
+    const interval = setInterval(() => {
+      if (isDragging.current || document.hidden) return;
+      setViewState(prev => ({ ...prev, rotationZ: prev.rotationZ + 0.18 }));
+    }, 90);
+    return () => clearInterval(interval);
+  }, [autoplay]);
 
   // --- Dice roll animation on each new sol ---
   useEffect(() => {
@@ -190,6 +206,18 @@ const App: React.FC = () => {
     setMutedState(prev => {
       setMuted(!prev);
       return !prev;
+    });
+  }, []);
+
+  const handleToggleAutoplay = useCallback(() => {
+    setAutoplay(prev => {
+      const next = !prev;
+      try { localStorage.setItem('lf-autoplay', next ? '1' : '0'); } catch { /* ignore */ }
+      if (next) {
+        setSpeed(s => (s === 0 ? 1 : s));
+        setSelectedHexId(null);
+      }
+      return next;
     });
   }, []);
 
@@ -337,7 +365,9 @@ const App: React.FC = () => {
         speed={speed}
         isRolling={isRolling}
         muted={muted}
+        autoplay={autoplay}
         onToggleMute={handleToggleMute}
+        onToggleAutoplay={handleToggleAutoplay}
         onSetSpeed={setSpeed}
         onSave={handleSave}
         onNewColony={handleNewColony}

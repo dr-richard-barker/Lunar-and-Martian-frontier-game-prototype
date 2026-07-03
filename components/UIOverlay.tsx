@@ -9,7 +9,9 @@ interface UIOverlayProps {
   speed: number;
   isRolling: boolean;
   muted: boolean;
+  autoplay: boolean;
   onToggleMute: () => void;
+  onToggleAutoplay: () => void;
   onSetSpeed: (speed: number) => void;
   onSave: () => void;
   onNewColony: () => void;
@@ -24,7 +26,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   speed,
   isRolling,
   muted,
+  autoplay,
   onToggleMute,
+  onToggleAutoplay,
   onSetSpeed,
   onSave,
   onNewColony,
@@ -75,6 +79,11 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
           {power.factor < 1 && (
             <p className="text-[10px] text-red-400 mt-2 font-bold animate-pulse">
               ⚠ GRID OVERLOAD — production at {Math.round(power.factor * 100)}%
+            </p>
+          )}
+          {autoplay && (
+            <p className="text-[10px] text-cyan-300 mt-2 font-bold tracking-[0.25em] animate-pulse">
+              🤖 AUTOPILOT ENGAGED — DIRECTOR AI BUILDING COLONY
             </p>
           )}
         </div>
@@ -159,6 +168,17 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         {/* Time & Session Controls */}
         <div className="flex flex-col gap-3 items-end pointer-events-auto">
           <div className="flex gap-2">
+            <button
+              onClick={onToggleAutoplay}
+              className={`px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-all backdrop-blur border ${
+                autoplay
+                  ? 'bg-cyan-600/80 border-cyan-400 text-white shadow-[0_0_16px_rgba(34,211,238,0.5)]'
+                  : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600 text-slate-300'
+              }`}
+              title="Let the AI director build the colony while you watch"
+            >
+              🤖 {autoplay ? 'AUTO ON' : 'AUTOPLAY'}
+            </button>
             <button
               onClick={onToggleMute}
               className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"
