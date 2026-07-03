@@ -343,6 +343,42 @@ body {
   61%, 100% { opacity: 0.25; }
 }
 
+/* Floating badges anchored to the 3D board (drei Html) */
+.board-badge {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.8);
+  white-space: nowrap;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+.board-badge-amber {
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.5);
+}
+.board-badge-red {
+  color: #fca5a5;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  animation: offline-blink 1.2s steps(1) infinite;
+}
+
+/* Floating yield numbers over the 3D board */
+.yield-popup-3d {
+  font-family: 'Orbitron', 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 12px currentColor;
+  animation: yield-float-3d 1.6s ease-out forwards;
+}
+@keyframes yield-float-3d {
+  0% { opacity: 0; transform: translateY(10px); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-42px); }
+}
+
 /* Cinematic vignette */
 .vignette {
   position: fixed;

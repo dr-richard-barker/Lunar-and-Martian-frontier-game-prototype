@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import Hexagon, { SurgeKind } from './components/Hexagon';
 import UIOverlay from './components/UIOverlay';
 import BuildMenu from './components/BuildMenu';
 import CityPanel from './components/CityPanel';
-import { WorkerModel } from './components/Structure3D';
+import Board3D, { YieldPopup } from './components/Board3D';
 import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind } from './types';
-import { TICK_MS, HEX_RADIUS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
+import { TICK_MS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
   newGame, tick, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
   countBuildings, getActiveSet,
@@ -16,13 +15,7 @@ import { nextLore } from './services/events';
 import { sfx, unlock, isMuted, setMuted } from './services/sound';
 import { autopilotAct } from './services/autopilot';
 
-interface YieldPopup {
-  id: number;
-  x: number;
-  y: number;
-  text: string;
-  color: string;
-}
+export type SurgeKind = 'none' | 'ring' | 'gold';
 
 let popupId = 0;
 
@@ -33,7 +26,6 @@ const App: React.FC = () => {
   const [activeEvent, setActiveEvent] = useState<ColonyEvent | null>(null);
   const [isRolling, setIsRolling] = useState(false);
   const [lore, setLore] = useState(nextLore());
-  const [viewState, setViewState] = useState({ rotationX: 55, rotationZ: -25, zoom: 0.8 });
   const [muted, setMutedState] = useState(isMuted());
   const [hoveredHexId, setHoveredHexId] = useState<number | null>(null);
   const [popups, setPopups] = useState<YieldPopup[]>([]);
@@ -41,9 +33,6 @@ const App: React.FC = () => {
     try { return localStorage.getItem('lf-autoplay') === '1'; } catch { return false; }
   });
 
-  const isDragging = useRef(false);
-  const dragDistance = useRef(0);
-  const lastMousePos = useRef({ x: 0, y: 0 });
   const eventTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -81,8 +70,8 @@ const App: React.FC = () => {
             const [kind, amount] = Object.entries(production)[0];
             fresh.push({
               id: popupId++,
-              x: HEX_RADIUS * Math.sqrt(3) * (hex.q + hex.r / 2),
-              y: HEX_RADIUS * 3 / 2 * hex.r,
+              q: hex.q,
+              r: hex.r,
               text: `+${Math.round(amount * 2 * 10) / 10} ${RESOURCE_STYLES[kind as ResourceKind].icon}`,
               color: RESOURCE_STYLES[kind as ResourceKind].color,
             });
@@ -97,16 +86,6 @@ const App: React.FC = () => {
     }, TICK_MS / speed);
     return () => clearInterval(interval);
   }, [speed, autoplay]);
-
-  // --- Cinematic slow orbit while autopilot runs ---
-  useEffect(() => {
-    if (!autoplay) return;
-    const interval = setInterval(() => {
-      if (isDragging.current || document.hidden) return;
-      setViewState(prev => ({ ...prev, rotationZ: prev.rotationZ + 0.18 }));
-    }, 90);
-    return () => clearInterval(interval);
-  }, [autoplay]);
 
   // --- Dice roll animation on each new sol ---
   useEffect(() => {
@@ -123,47 +102,9 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // --- Camera controls ---
-  const handleMouseDown = (e: React.MouseEvent) => {
-    unlock(); // WebAudio needs a user gesture before it can play
-    isDragging.current = true;
-    dragDistance.current = 0;
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-  };
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isDragging.current) return;
-    const dx = e.clientX - lastMousePos.current.x;
-    const dy = e.clientY - lastMousePos.current.y;
-    dragDistance.current += Math.abs(dx) + Math.abs(dy);
-    setViewState(prev => ({
-      ...prev,
-      rotationZ: prev.rotationZ + dx * 0.4,
-      rotationX: Math.max(15, Math.min(85, prev.rotationX - dy * 0.4)),
-    }));
-    lastMousePos.current = { x: e.clientX, y: e.clientY };
-  }, []);
-
-  useEffect(() => {
-    const handleMouseUp = () => { isDragging.current = false; };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [handleMouseMove]);
-
-  const handleWheel = (e: React.WheelEvent) => {
-    setViewState(prev => ({
-      ...prev,
-      zoom: Math.max(0.35, Math.min(2.5, prev.zoom - e.deltaY * 0.0008)),
-    }));
-  };
-
   // --- Game actions ---
   const handleSelectHex = useCallback((id: number) => {
-    if (dragDistance.current > 8) return;
+    if (id < 0) { setSelectedHexId(null); return; }
     sfx.click();
     setSelectedHexId(prev => (prev === id ? null : id));
   }, []);
@@ -204,6 +145,22 @@ const App: React.FC = () => {
     });
   }, []);
 
+  const handleSave = useCallback(() => {
+    setGameState(prev => {
+      saveGame(prev);
+      return { ...prev, logs: [...prev.logs, '[SYS] Colony state saved.'].slice(-30) };
+    });
+  }, []);
+
+  const handleNewColony = useCallback(() => {
+    if (!window.confirm('Abandon this colony and land a new expedition? Your current save will be overwritten.')) return;
+    const fresh = newGame();
+    saveGame(fresh);
+    setSelectedHexId(null);
+    setActiveEvent(null);
+    setGameState(fresh);
+  }, []);
+
   const handleToggleMute = useCallback(() => {
     setMutedState(prev => {
       setMuted(!prev);
@@ -221,22 +178,6 @@ const App: React.FC = () => {
       }
       return next;
     });
-  }, []);
-
-  const handleSave = useCallback(() => {
-    setGameState(prev => {
-      saveGame(prev);
-      return { ...prev, logs: [...prev.logs, '[SYS] Colony state saved.'].slice(-30) };
-    });
-  }, []);
-
-  const handleNewColony = useCallback(() => {
-    if (!window.confirm('Abandon this colony and land a new expedition? Your current save will be overwritten.')) return;
-    const fresh = newGame();
-    saveGame(fresh);
-    setSelectedHexId(null);
-    setActiveEvent(null);
-    setGameState(fresh);
   }, []);
 
   // --- Derived board annotations ---
@@ -270,12 +211,12 @@ const App: React.FC = () => {
     return keys;
   }, [gameState.board]);
 
-  const surgeFor = (hexId: number): SurgeKind => {
+  const surgeFor = useCallback((hexId: number): SurgeKind => {
     const hex = gameState.board[hexId];
     if (rollSum === null || hex.diceValue !== rollSum) return 'none';
     if (hex.building && BUILDINGS[hex.building].production) return 'gold';
     return 'ring';
-  };
+  }, [gameState.board, rollSum]);
 
   const selectedHex = selectedHexId !== null
     ? gameState.board.find(h => h.id === selectedHexId) ?? null
@@ -286,88 +227,23 @@ const App: React.FC = () => {
     : null;
 
   return (
-    <div
-      className="relative w-screen h-screen overflow-hidden flex items-center justify-center cursor-grab active:cursor-grabbing"
-      onMouseDown={handleMouseDown}
-      onWheel={handleWheel}
-    >
+    <div className="relative w-screen h-screen overflow-hidden" onPointerDown={unlock}>
       {/* Planetary Atmosphere Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(30,58,138,0.15)_0%,_transparent_70%)] pointer-events-none" />
 
-      <div
-        className="w-full h-full flex items-center justify-center"
-        style={{ perspective: '1500px' }}
-      >
-        <div
-          className="relative transition-transform duration-500 ease-out"
-          style={{
-            transform: `rotateX(${viewState.rotationX}deg) rotateZ(${viewState.rotationZ}deg) scale(${viewState.zoom})`,
-            transformStyle: 'preserve-3d',
-            width: '1000px', height: '1000px',
-            ['--rz' as string]: `${viewState.rotationZ}`,
-          }}
-        >
-          {/* Base Shadow Floor */}
-          <div
-            className="absolute inset-0 rounded-full border-2 border-sky-500/20 shadow-[0_0_100px_rgba(56,189,248,0.1)]"
-            style={{ transform: 'translateZ(-50px) scale(1.4)', background: 'radial-gradient(circle, rgba(2,6,23,0.8) 0%, transparent 80%)' }}
-          />
-
-          <div className="absolute inset-0 flex items-center justify-center" style={{ transformStyle: 'preserve-3d' }}>
-            {gameState.board.map(hex => (
-              <Hexagon
-                key={hex.id}
-                data={hex}
-                selected={hex.id === selectedHexId}
-                frontier={frontierIds.has(hex.id)}
-                surge={surgeFor(hex.id)}
-                onSelect={handleSelectHex}
-                onHover={setHoveredHexId}
-                roadKey={roadKeys.get(hex.id) ?? ''}
-                offline={!!hex.building && !activeIds.has(hex.id)}
-              />
-            ))}
-
-            {/* Floating yield numbers on dice surges */}
-            {popups.map(p => (
-              <div
-                key={p.id}
-                className="yield-popup"
-                style={{
-                  left: `calc(50% + ${p.x}px)`,
-                  top: `calc(50% + ${p.y}px)`,
-                  color: p.color,
-                }}
-              >
-                {p.text}
-              </div>
-            ))}
-
-            {/* Worker rover units */}
-            {gameState.units.map(unit => {
-              const ux = HEX_RADIUS * Math.sqrt(3) * (unit.q + unit.r / 2);
-              const uy = HEX_RADIUS * 3 / 2 * unit.r;
-              // Nudge idle rovers at the hub apart so they don't stack.
-              const jitter = unit.state === 'idle'
-                ? { x: Math.cos(unit.id * 2.4) * 26, y: Math.sin(unit.id * 2.4) * 26 }
-                : { x: 0, y: 0 };
-              return (
-                <div
-                  key={unit.id}
-                  className="unit-anchor"
-                  style={{
-                    left: `calc(50% + ${ux + jitter.x}px)`,
-                    top: `calc(50% + ${uy + jitter.y}px)`,
-                  }}
-                  title={`Worker Rover ${unit.id} — ${unit.state}`}
-                >
-                  <WorkerModel working={unit.state === 'constructing'} />
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+      {/* WebGL board */}
+      <Board3D
+        gameState={gameState}
+        selectedHexId={selectedHexId}
+        frontierIds={frontierIds}
+        activeIds={activeIds}
+        roadKeys={roadKeys}
+        surgeFor={surgeFor}
+        popups={popups}
+        autoplay={autoplay}
+        onSelect={handleSelectHex}
+        onHover={setHoveredHexId}
+      />
 
       {/* Cinematic vignette */}
       <div className="vignette" />
