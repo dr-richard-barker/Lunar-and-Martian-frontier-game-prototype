@@ -4,8 +4,9 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, Sparkles } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { GameState, HexData, TerrainType, BuildingType, Unit } from '../types';
-import { TERRAIN_STYLES, BOARD_RADIUS } from '../constants';
+import { BOARD_RADIUS } from '../constants';
 import { HEX_DIRS } from '../services/hexgrid';
+import { buildTerrainMaterials, buildMoonFloorMaterial } from '../services/lunarTextures';
 import { BuildingMesh, ConstructionMesh, RoverMesh, MATS } from './Models3D';
 import type { SurgeKind } from '../App';
 
@@ -29,17 +30,9 @@ const ELEV: Record<TerrainType, number> = {
 // --- Shared geometry & materials ---
 
 const tileGeo = new THREE.CylinderGeometry(HEX * 0.985, HEX * 1.02, 0.3, 6);
-const terrainMats: Record<TerrainType, THREE.MeshStandardMaterial> = Object.fromEntries(
-  (Object.keys(TERRAIN_STYLES) as TerrainType[]).map(t => [
-    t,
-    new THREE.MeshStandardMaterial({
-      color: TERRAIN_STYLES[t].color,
-      roughness: t === TerrainType.ICE ? 0.35 : 0.92,
-      metalness: t === TerrainType.SILICATES ? 0.35 : 0.05,
-      flatShading: true,
-    }),
-  ])
-) as Record<TerrainType, THREE.MeshStandardMaterial>;
+// Procedural lunar regolith (color + bump maps, generated offline on canvas).
+const terrainMats = buildTerrainMaterials();
+const moonFloorMat = buildMoonFloorMaterial();
 
 const railBedMat = new THREE.MeshStandardMaterial({ color: '#161e2c', roughness: 0.6, metalness: 0.5 });
 
@@ -108,7 +101,8 @@ const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, r
     <group position={[x, elev, z]}>
       <mesh
         geometry={tileGeo}
-        material={terrainMats[hex.terrain]}
+        material={terrainMats[hex.terrain][hex.id % 2]}
+        rotation={[0, (hex.id % 6) * (Math.PI / 3), 0]}
         castShadow
         receiveShadow
         onClick={(e) => { e.stopPropagation(); if (e.delta < 8) onSelect(hex.id); }}
@@ -289,10 +283,9 @@ const Board3D: React.FC<Board3DProps> = ({
       />
       <ambientLight intensity={0.12} />
 
-      {/* Lunar floor catches shadows and grounds the board */}
-      <mesh position={[0, -0.32, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[floorRadius, 48]} />
-        <meshStandardMaterial color="#0b111d" roughness={0.95} metalness={0} />
+      {/* Photoreal moon surface catches shadows and grounds the board */}
+      <mesh position={[0, -0.32, 0]} rotation={[-Math.PI / 2, 0, 0]} material={moonFloorMat} receiveShadow>
+        <circleGeometry args={[floorRadius, 64]} />
       </mesh>
       <mesh position={[0, -0.31, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[floorRadius - 0.06, floorRadius, 64]} />
