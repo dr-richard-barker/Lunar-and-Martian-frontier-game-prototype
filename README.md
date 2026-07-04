@@ -18,6 +18,14 @@ Best played on a desktop browser with a mouse.
 
 ## How to Play
 
+- **⚔️ Rival colonies** — up to three AI factions land alongside you, each building
+  its own city, rail network, and rover fleet in its own colors: the gold
+  **Meridian Trade Guild** (traders — rush He-3 exports), the crimson **Helios
+  Racing Syndicate** (racers — sprawling rail and big fleets), and the green
+  **Verdant Order** (agrarians — greenhouses and population booms). A scoreboard
+  tracks every colony; 🚀 NEW COLONY opens an expedition dialog to pick the map
+  size (61 / 91 / 127 tiles) and how many rivals land.
+
 - **The Colony Hub (Civ-style)** — click the central city to open its production
   panel. Train **Worker Rovers** (each crewed by a colonist) and charter
   **Colonist Shuttles** from Earth. Production takes sols and runs as a queue.

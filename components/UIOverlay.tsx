@@ -1,7 +1,7 @@
 import React from 'react';
 import { GameState, ResourceKind, ColonyEvent } from '../types';
 import { RESOURCE_STYLES } from '../constants';
-import { getPowerReport, getHousing, getRates, idleWorkers } from '../services/simulation';
+import { getPowerReport, getHousing, getRates, idleWorkers, countBuildings } from '../services/simulation';
 import Dice3D from './Dice3D';
 
 interface UIOverlayProps {
@@ -35,11 +35,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   activeEvent,
   lore,
 }) => {
-  const power = getPowerReport(gameState.board);
-  const housing = getHousing(gameState.board);
-  const rates = getRates(gameState);
-  const idle = idleWorkers(gameState.units).length;
+  const player = gameState.factions[0];
+  const power = getPowerReport(gameState.board, player);
+  const housing = getHousing(gameState.board, player);
+  const rates = getRates(gameState, player);
+  const idle = idleWorkers(player).length;
   const rollSum = gameState.lastRoll ? gameState.lastRoll.d1 + gameState.lastRoll.d2 : null;
+  const rivals = gameState.factions.slice(1);
 
   return (
     <div
@@ -49,7 +51,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
       {/* Top Header */}
       <div className="flex justify-between items-start gap-4">
         <div className="hud-panel bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
-          <h1 className="text-2xl font-orbitron text-sky-400 tracking-wider">{gameState.colonyName}</h1>
+          <h1 className="text-2xl font-orbitron tracking-wider" style={{ color: player.color }}>{player.name}</h1>
           <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] mt-1">Lunar Frontier · Sandbox Colony</p>
           <div className="mt-3 flex gap-5 text-center">
             <div>
@@ -59,13 +61,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             <div>
               <p className="text-[9px] uppercase text-slate-500 font-bold tracking-widest">Colonists</p>
               <p className="text-xl font-orbitron text-white">
-                {gameState.population}<span className="text-xs text-slate-500">/{housing}</span>
+                {player.population}<span className="text-xs text-slate-500">/{housing}</span>
               </p>
             </div>
             <div>
               <p className="text-[9px] uppercase text-slate-500 font-bold tracking-widest">Rovers</p>
               <p className="text-xl font-orbitron text-white">
-                {idle}<span className="text-xs text-slate-500">/{gameState.units.length}</span>
+                {idle}<span className="text-xs text-slate-500">/{player.units.length}</span>
               </p>
             </div>
             <div>
@@ -85,6 +87,20 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             <p className="text-[10px] text-cyan-300 mt-2 font-bold tracking-[0.25em] animate-pulse">
               🤖 AUTOPILOT ENGAGED — DIRECTOR AI BUILDING COLONY
             </p>
+          )}
+
+          {/* Rival scoreboard */}
+          {rivals.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-slate-700/70 space-y-1.5">
+              {rivals.map(f => (
+                <div key={f.id} className="flex items-center gap-2 text-[10px]">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: f.color, boxShadow: `0 0 6px ${f.color}` }} />
+                  <span className="font-bold tracking-wide flex-1" style={{ color: f.color }}>{f.name}</span>
+                  <span className="font-mono text-slate-400">👥 {f.population}</span>
+                  <span className="font-mono text-slate-400">🏗 {countBuildings(gameState.board, f.id)}</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
@@ -114,7 +130,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             <span className="text-4xl">⚡</span>
             <div>
               <h2 className="text-2xl font-orbitron uppercase tracking-tight leading-none">{activeEvent.title}</h2>
-              <p className="text-[10px] mt-1 text-amber-400 font-bold">MISSION CONTROL ALERT</p>
+              <p className="text-[10px] mt-1 text-amber-400 font-bold">MISSION CONTROL ALERT — ALL COLONIES AFFECTED</p>
             </div>
           </div>
           <p className="text-sm text-slate-300 mb-6 leading-relaxed italic">"{activeEvent.description}"</p>
@@ -136,7 +152,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                 <span className="text-2xl mb-1 transform group-hover:scale-125 transition-transform duration-300 cursor-help">
                   {RESOURCE_STYLES[kind].icon}
                 </span>
-                <span className="text-lg font-orbitron text-white">{Math.floor(gameState.resources[kind])}</span>
+                <span className="text-lg font-orbitron text-white">{Math.floor(player.resources[kind])}</span>
                 <span className={`text-[9px] font-mono font-bold ${rate > 0.01 ? 'text-emerald-400' : rate < -0.01 ? 'text-red-400' : 'text-slate-600'}`}>
                   {rate > 0.01 ? '+' : ''}{Math.abs(rate) < 0.01 ? '—' : rate.toFixed(1)}
                 </span>
@@ -175,7 +191,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
                   ? 'bg-cyan-600/80 border-cyan-400 text-white shadow-[0_0_16px_rgba(34,211,238,0.5)]'
                   : 'bg-slate-800/90 hover:bg-slate-700 border-slate-600 text-slate-300'
               }`}
-              title="Let the AI director build the colony while you watch"
+              title="Let the AI director build your colony while you watch"
             >
               🤖 {autoplay ? 'AUTO ON' : 'AUTOPLAY'}
             </button>
@@ -215,7 +231,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             ))}
           </div>
           <p className="text-[9px] text-slate-600 font-bold uppercase tracking-widest pr-1">
-            Click the hub to train rovers · Click tiles to build
+            Click your hub to train rovers · Click tiles to build
           </p>
         </div>
       </div>

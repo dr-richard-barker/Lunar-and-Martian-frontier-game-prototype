@@ -1,5 +1,6 @@
 import {
   TerrainType, BuildingType, BuildingDef, ResourceKind, Stockpile, CityProduct, CityProductDef,
+  Archetype,
 } from './types';
 
 export const HEX_RADIUS = 60;
@@ -8,7 +9,22 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v3';
+export const SAVE_KEY = 'lunar-frontier-save-v4';
+
+/** Selectable map sizes (hex count = 3r² + 3r + 1). */
+export const BOARD_SIZES: { radius: number; label: string; tiles: number }[] = [
+  { radius: 4, label: 'Compact', tiles: 61 },
+  { radius: 5, label: 'Standard', tiles: 91 },
+  { radius: 6, label: 'Vast', tiles: 127 },
+];
+
+/** Faction roster — index 0 is always the human player. */
+export const FACTION_PRESETS: { name: string; color: string; archetype: Archetype; blurb: string }[] = [
+  { name: 'FRONTIER BASE ALPHA', color: '#22d3ee', archetype: 'PIONEERS', blurb: 'Your colony — balanced pioneers.' },
+  { name: 'MERIDIAN TRADE GUILD', color: '#f59e0b', archetype: 'TRADERS', blurb: 'Traders — rush helium-3 exports and orbital commerce.' },
+  { name: 'HELIOS RACING SYNDICATE', color: '#f87171', archetype: 'RACERS', blurb: 'Racers — big rover fleets and sprawling maglev rail.' },
+  { name: 'THE VERDANT ORDER', color: '#4ade80', archetype: 'AGRARIANS', blurb: 'Agrarians — vast greenhouses and booming populations.' },
+];
 
 /** Catan-style token pool, cycled over the board's non-crater tiles. */
 export const DICE_TOKEN_POOL = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];

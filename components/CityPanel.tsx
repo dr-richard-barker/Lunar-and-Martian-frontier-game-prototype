@@ -11,9 +11,10 @@ interface CityPanelProps {
 }
 
 const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQueueItem, onClose }) => {
-  const power = getPowerReport(gameState.board);
-  const housing = getHousing(gameState.board);
-  const idle = idleWorkers(gameState.units).length;
+  const player = gameState.factions[0];
+  const power = getPowerReport(gameState.board, player);
+  const housing = getHousing(gameState.board, player);
+  const idle = idleWorkers(player).length;
 
   return (
     <div className="hud-panel panel-in absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-sky-700 rounded-2xl shadow-[0_0_40px_rgba(14,165,233,0.15)] pointer-events-auto p-5 z-40">
@@ -23,7 +24,7 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
           <h2 className="font-orbitron text-lg text-sky-400 flex items-center gap-2">
             <span>🏛️</span> Colony Hub
           </h2>
-          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">{gameState.colonyName}</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">{player.name}</p>
         </div>
         <button
           onClick={onClose}
@@ -37,7 +38,7 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
       <div className="grid grid-cols-3 gap-2 mb-4 text-center">
         <div className="bg-slate-800/60 rounded-lg p-2">
           <p className="text-[8px] uppercase text-slate-500 font-bold tracking-widest">Colonists</p>
-          <p className="text-sm font-orbitron text-white">{gameState.population}/{housing}</p>
+          <p className="text-sm font-orbitron text-white">{player.population}/{housing}</p>
         </div>
         <div className="bg-slate-800/60 rounded-lg p-2">
           <p className="text-[8px] uppercase text-slate-500 font-bold tracking-widest">Power</p>
@@ -48,7 +49,7 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
         <div className="bg-slate-800/60 rounded-lg p-2">
           <p className="text-[8px] uppercase text-slate-500 font-bold tracking-widest">Rovers</p>
           <p className="text-sm font-orbitron text-white">
-            {idle}<span className="text-slate-500">/{gameState.units.length}</span>
+            {idle}<span className="text-slate-500">/{player.units.length}</span>
             <span className="text-[9px] text-slate-500"> idle</span>
           </p>
         </div>
@@ -59,7 +60,7 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
       <div className="space-y-2 mb-4">
         {(Object.keys(CITY_PRODUCTS) as CityProduct[]).map(product => {
           const def = CITY_PRODUCTS[product];
-          const check = canEnqueue(gameState, product);
+          const check = canEnqueue(gameState, 0, product);
           return (
             <button
               key={product}
@@ -100,15 +101,15 @@ const CityPanel: React.FC<CityPanelProps> = ({ gameState, onEnqueue, onCancelQue
 
       {/* Production queue */}
       <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">
-        Queue ({gameState.cityQueue.length})
+        Queue ({player.cityQueue.length})
       </p>
-      {gameState.cityQueue.length === 0 ? (
+      {player.cityQueue.length === 0 ? (
         <p className="text-xs text-slate-600 italic p-3 bg-slate-800/40 rounded-xl">
           Assembly bays idle. Queue up a rover or shuttle.
         </p>
       ) : (
         <div className="space-y-2">
-          {gameState.cityQueue.map((item, idx) => {
+          {player.cityQueue.map((item, idx) => {
             const def = CITY_PRODUCTS[item.product];
             const progress = idx === 0
               ? Math.round(((def.buildSols - item.remaining) / def.buildSols) * 100)

@@ -4,10 +4,9 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, Sparkles } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
 import { GameState, HexData, TerrainType, BuildingType, Unit } from '../types';
-import { BOARD_RADIUS } from '../constants';
 import { HEX_DIRS } from '../services/hexgrid';
 import { buildTerrainMaterials, buildMoonFloorMaterial } from '../services/lunarTextures';
-import { BuildingMesh, ConstructionMesh, RoverMesh, MATS } from './Models3D';
+import { BuildingMesh, ConstructionMesh, RoverMesh, getAccent, DEFAULT_ACCENT, MATS } from './Models3D';
 import type { SurgeKind } from '../App';
 
 /** World-space size of one hex (center to corner). */
@@ -75,11 +74,14 @@ interface TileProps {
   surge: SurgeKind;
   offline: boolean;
   roadKey: string;
+  /** Identity color of the owning faction (null = unclaimed). */
+  ownerColor: string | null;
   onSelect: (id: number) => void;
   onHover: (id: number | null) => void;
 }
 
-const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, roadKey, onSelect, onHover }) => {
+const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, roadKey, ownerColor, onSelect, onHover }) => {
+  const accent = ownerColor ? getAccent(ownerColor) : DEFAULT_ACCENT;
   const [x, z] = hexToWorld(hex.q, hex.r);
   const elev = ELEV[hex.terrain];
   const top = 0.15;
@@ -124,7 +126,7 @@ const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, r
           <mesh position={[0, 0.015, 0]} material={railBedMat} receiveShadow>
             <cylinderGeometry args={[0.22, 0.24, 0.03, 12]} />
           </mesh>
-          <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]} material={MATS.neonCyan}>
+          <mesh position={[0, 0.035, 0]} rotation={[-Math.PI / 2, 0, 0]} material={accent.neon}>
             <torusGeometry args={[0.16, 0.012, 6, 24]} />
           </mesh>
           {railDirs.map(i => {
@@ -136,10 +138,10 @@ const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, r
                 <mesh position={[len / 2, 0.012, 0]} material={railBedMat} receiveShadow>
                   <boxGeometry args={[len, 0.024, 0.2]} />
                 </mesh>
-                <mesh position={[len / 2, 0.028, -0.065]} material={MATS.neonCyan}>
+                <mesh position={[len / 2, 0.028, -0.065]} material={accent.neon}>
                   <boxGeometry args={[len, 0.012, 0.02]} />
                 </mesh>
-                <mesh position={[len / 2, 0.028, 0.065]} material={MATS.neonCyan}>
+                <mesh position={[len / 2, 0.028, 0.065]} material={accent.neon}>
                   <boxGeometry args={[len, 0.012, 0.02]} />
                 </mesh>
               </group>
@@ -151,12 +153,12 @@ const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, r
       {/* Building / construction site */}
       {hex.building && hex.building !== BuildingType.ROAD && (
         <group position={[0, top, 0]}>
-          <BuildingMesh type={hex.building} />
+          <BuildingMesh type={hex.building} accent={accent} />
         </group>
       )}
       {hex.construction && (
         <group position={[0, top, 0]}>
-          <ConstructionMesh />
+          <ConstructionMesh accent={accent} />
           <Html position={[0, 0.55, 0]} center style={{ pointerEvents: 'none' }}>
             <div className="board-badge board-badge-amber">
               {Math.round(((hex.construction.total - hex.construction.remaining) / hex.construction.total) * 100)}%
@@ -202,7 +204,7 @@ Tile.displayName = 'Tile';
 
 // --- Rover unit with smooth motion ---
 
-const RoverUnit: React.FC<{ unit: Unit }> = ({ unit }) => {
+const RoverUnit: React.FC<{ unit: Unit; color: string }> = ({ unit, color }) => {
   const ref = useRef<THREE.Group>(null);
   const target = useMemo(() => {
     const [x, z] = hexToWorld(unit.q, unit.r);
@@ -224,7 +226,7 @@ const RoverUnit: React.FC<{ unit: Unit }> = ({ unit }) => {
 
   return (
     <group ref={ref} position={target.toArray()}>
-      <RoverMesh working={unit.state === 'constructing'} />
+      <RoverMesh working={unit.state === 'constructing'} accent={getAccent(color)} />
     </group>
   );
 };
@@ -256,14 +258,17 @@ const Board3D: React.FC<Board3DProps> = ({
   gameState, selectedHexId, frontierIds, activeIds, roadKeys, surgeFor, popups, autoplay, onSelect, onHover,
 }) => {
   const handleMiss = useCallback(() => onSelect(-1), [onSelect]);
-  const floorRadius = (BOARD_RADIUS + 2.2) * HEX * Math.sqrt(3);
+  const radius = gameState.boardRadius;
+  const floorRadius = (radius + 2.2) * HEX * Math.sqrt(3);
+  const camScale = 1 + (radius - 4) * 0.28;
 
   return (
     <Canvas
+      key={`board-${radius}`}
       shadows
       dpr={[1, 2]}
       gl={{ antialias: true, alpha: true }}
-      camera={{ position: [0, 11.5, 13], fov: 42 }}
+      camera={{ position: [0, 11.5 * camScale, 13 * camScale], fov: 42 }}
       onPointerMissed={handleMiss}
       style={{ position: 'absolute', inset: 0 }}
     >
@@ -275,10 +280,10 @@ const Board3D: React.FC<Board3DProps> = ({
         intensity={2.4}
         color="#fff3dd"
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-12}
-        shadow-camera-right={12}
-        shadow-camera-top={12}
-        shadow-camera-bottom={-12}
+        shadow-camera-left={-12 * camScale}
+        shadow-camera-right={12 * camScale}
+        shadow-camera-top={12 * camScale}
+        shadow-camera-bottom={-12 * camScale}
         shadow-bias={-0.0004}
       />
       <ambientLight intensity={0.12} />
@@ -293,7 +298,7 @@ const Board3D: React.FC<Board3DProps> = ({
       </mesh>
 
       {/* Ambient dust motes */}
-      <Sparkles count={90} scale={[16, 5, 16]} position={[0, 2, 0]} size={1.6} speed={0.25} opacity={0.4} color="#9ccef5" />
+      <Sparkles count={90} scale={[16 * camScale, 5, 16 * camScale]} position={[0, 2, 0]} size={1.6} speed={0.25} opacity={0.4} color="#9ccef5" />
 
       {gameState.board.map(hex => (
         <Tile
@@ -304,14 +309,17 @@ const Board3D: React.FC<Board3DProps> = ({
           surge={surgeFor(hex.id)}
           offline={!!hex.building && !activeIds.has(hex.id)}
           roadKey={roadKeys.get(hex.id) ?? ''}
+          ownerColor={hex.owner !== null ? gameState.factions[hex.owner]?.color ?? null : null}
           onSelect={onSelect}
           onHover={onHover}
         />
       ))}
 
-      {gameState.units.map(unit => (
-        <RoverUnit key={unit.id} unit={unit} />
-      ))}
+      {gameState.factions.flatMap(faction =>
+        faction.units.map(unit => (
+          <RoverUnit key={unit.id} unit={unit} color={faction.color} />
+        ))
+      )}
 
       {/* Floating yield numbers */}
       {popups.map(p => {
@@ -331,7 +339,7 @@ const Board3D: React.FC<Board3DProps> = ({
         makeDefault
         enablePan={false}
         minDistance={6}
-        maxDistance={26}
+        maxDistance={26 * camScale}
         minPolarAngle={0.35}
         maxPolarAngle={1.32}
         autoRotate={autoplay}

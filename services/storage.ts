@@ -15,8 +15,9 @@ export function loadGame(): GameState | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as GameState;
-    if (!parsed.board || !parsed.resources || typeof parsed.sol !== 'number') return null;
-    if (!Array.isArray(parsed.units) || !Array.isArray(parsed.cityQueue)) return null;
+    if (!parsed.board || typeof parsed.sol !== 'number') return null;
+    if (!Array.isArray(parsed.factions) || parsed.factions.length === 0) return null;
+    if (typeof parsed.boardRadius !== 'number') return null;
     return parsed;
   } catch {
     return null;

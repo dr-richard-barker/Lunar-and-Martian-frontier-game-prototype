@@ -3,12 +3,14 @@ import UIOverlay from './components/UIOverlay';
 import BuildMenu from './components/BuildMenu';
 import CityPanel from './components/CityPanel';
 import Board3D, { YieldPopup } from './components/Board3D';
-import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind } from './types';
+import NewColonyDialog from './components/NewColonyDialog';
+import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind, NewGameOptions } from './types';
 import { TICK_MS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
-  newGame, tick, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
-  countBuildings, getActiveSet,
+  newGame, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
+  countBuildings, getAllActiveIds,
 } from './services/simulation';
+import { advanceSol } from './services/world';
 import { boardMap, hexKey, HEX_DIRS } from './services/hexgrid';
 import { saveGame, loadGame } from './services/storage';
 import { nextLore } from './services/events';
@@ -20,7 +22,8 @@ export type SurgeKind = 'none' | 'ring' | 'gold';
 let popupId = 0;
 
 const App: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame());
+  const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame({ boardRadius: 5, aiCount: 3 }));
+  const [showNewColony, setShowNewColony] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selectedHexId, setSelectedHexId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<ColonyEvent | null>(null);
@@ -43,8 +46,8 @@ const App: React.FC = () => {
       // Browsers throttle hidden tabs to ~1 timer/min anyway; pause cleanly instead.
       if (document.hidden) return;
       setGameState(prev => {
-        const result = tick(prev);
-        // Autopilot: let the AI director place orders after the sol resolves.
+        // Advance every faction, then let the player's autopilot act if engaged.
+        const result = advanceSol(prev);
         if (autoplay) result.state = autopilotAct(result.state);
         if (result.event) {
           setActiveEvent(result.event);
@@ -53,15 +56,17 @@ const App: React.FC = () => {
           eventTimer.current = setTimeout(() => setActiveEvent(null), 7000);
         }
 
-        // Audio feedback for things that finished this sol.
-        if (countBuildings(result.state.board) > countBuildings(prev.board)) sfx.complete();
-        if (result.state.population > prev.population || result.state.units.length > prev.units.length) sfx.arrive();
-        if (result.state.population < prev.population) sfx.loss();
+        // Audio feedback for player things that finished this sol.
+        const prevPlayer = prev.factions[0];
+        const nextPlayer = result.state.factions[0];
+        if (countBuildings(result.state.board, 0) > countBuildings(prev.board, 0)) sfx.complete();
+        if (nextPlayer.population > prevPlayer.population || nextPlayer.units.length > prevPlayer.units.length) sfx.arrive();
+        if (nextPlayer.population < prevPlayer.population) sfx.loss();
 
         // Floating yield numbers over surged tiles (online buildings only).
         const roll = result.state.lastRoll ? result.state.lastRoll.d1 + result.state.lastRoll.d2 : null;
         const fresh: YieldPopup[] = [];
-        const surgeActive = getActiveSet(result.state.board);
+        const surgeActive = getAllActiveIds(result.state);
         if (roll !== null) {
           for (const hex of result.state.board) {
             if (hex.diceValue !== roll || !hex.building || !surgeActive.has(hex.id)) continue;
@@ -112,7 +117,7 @@ const App: React.FC = () => {
   const handleBuild = useCallback((hexId: number, type: BuildingType) => {
     sfx.place();
     setGameState(prev => {
-      const next = orderConstruction(prev, hexId, type);
+      const next = orderConstruction(prev, 0, hexId, type);
       saveGame(next);
       return next;
     });
@@ -121,7 +126,7 @@ const App: React.FC = () => {
   const handleDemolish = useCallback((hexId: number) => {
     sfx.demolish();
     setGameState(prev => {
-      const next = demolish(prev, hexId);
+      const next = demolish(prev, 0, hexId);
       saveGame(next);
       return next;
     });
@@ -130,7 +135,7 @@ const App: React.FC = () => {
   const handleEnqueue = useCallback((product: CityProduct) => {
     sfx.place();
     setGameState(prev => {
-      const next = enqueueProduct(prev, product);
+      const next = enqueueProduct(prev, 0, product);
       saveGame(next);
       return next;
     });
@@ -139,7 +144,7 @@ const App: React.FC = () => {
   const handleCancelQueueItem = useCallback((itemId: number) => {
     sfx.click();
     setGameState(prev => {
-      const next = cancelQueueItem(prev, itemId);
+      const next = cancelQueueItem(prev, 0, itemId);
       saveGame(next);
       return next;
     });
@@ -153,12 +158,17 @@ const App: React.FC = () => {
   }, []);
 
   const handleNewColony = useCallback(() => {
-    if (!window.confirm('Abandon this colony and land a new expedition? Your current save will be overwritten.')) return;
-    const fresh = newGame();
+    setShowNewColony(true);
+  }, []);
+
+  const handleStartExpedition = useCallback((options: NewGameOptions) => {
+    const fresh = newGame(options);
     saveGame(fresh);
     setSelectedHexId(null);
     setActiveEvent(null);
+    setShowNewColony(false);
     setGameState(fresh);
+    sfx.place();
   }, []);
 
   const handleToggleMute = useCallback(() => {
@@ -185,17 +195,18 @@ const App: React.FC = () => {
 
   const frontierIds = useMemo(() => {
     const ids = new Set<number>();
+    const player = gameState.factions[0];
     for (const hex of gameState.board) {
-      if (!hex.building && !hex.construction && isWithinReach(gameState.board, hex)) {
+      if (!hex.building && !hex.construction && isWithinReach(gameState.board, player, hex)) {
         ids.add(hex.id);
       }
     }
     return ids;
-  }, [gameState.board]);
+  }, [gameState.board, gameState.factions]);
 
-  // Maglev network state: which structures are online, and which way each
-  // track segment connects (for rail rendering).
-  const activeIds = useMemo(() => getActiveSet(gameState.board), [gameState.board]);
+  // Maglev network state: which structures are online (any faction), and
+  // which way each track segment connects to its own faction's network.
+  const activeIds = useMemo(() => getAllActiveIds(gameState), [gameState]);
   const roadKeys = useMemo(() => {
     const keys = new Map<number, string>();
     const map = boardMap(gameState.board);
@@ -204,7 +215,7 @@ const App: React.FC = () => {
       const dirs: number[] = [];
       HEX_DIRS.forEach((d, i) => {
         const n = map.get(hexKey({ q: hex.q + d.q, r: hex.r + d.r }));
-        if (n && (n.building === BuildingType.ROAD || n.building === BuildingType.CITY)) dirs.push(i);
+        if (n && n.owner === hex.owner && (n.building === BuildingType.ROAD || n.building === BuildingType.CITY)) dirs.push(i);
       });
       keys.set(hex.id, dirs.join(','));
     }
@@ -221,9 +232,12 @@ const App: React.FC = () => {
   const selectedHex = selectedHexId !== null
     ? gameState.board.find(h => h.id === selectedHexId) ?? null
     : null;
-  const cityIsSelected = selectedHex?.building === BuildingType.CITY;
+  const cityIsSelected = selectedHex?.building === BuildingType.CITY && selectedHex.owner === 0;
   const hoveredHex = hoveredHexId !== null
     ? gameState.board.find(h => h.id === hoveredHexId) ?? null
+    : null;
+  const hoveredOwner = hoveredHex?.owner !== null && hoveredHex?.owner !== undefined
+    ? gameState.factions[hoveredHex.owner]
     : null;
 
   return (
@@ -254,6 +268,7 @@ const App: React.FC = () => {
           Sector {hoveredHex.id} · {TERRAIN_STYLES[hoveredHex.terrain].label}
           {hoveredHex.diceValue !== null && <span className="text-amber-300"> · Yield {hoveredHex.diceValue}</span>}
           {hoveredHex.building && <span className="text-sky-300"> · {BUILDINGS[hoveredHex.building].name}</span>}
+          {hoveredOwner && hoveredOwner.id !== 0 && <span style={{ color: hoveredOwner.color }}> · {hoveredOwner.name}</span>}
           {hoveredHex.building && !activeIds.has(hoveredHex.id) && <span className="text-red-400"> · OFFLINE</span>}
           {hoveredHex.construction && <span className="text-amber-400"> · Building {BUILDINGS[hoveredHex.construction.type].name}</span>}
         </div>
@@ -273,6 +288,13 @@ const App: React.FC = () => {
         activeEvent={activeEvent}
         lore={lore}
       />
+
+      {showNewColony && (
+        <NewColonyDialog
+          onStart={handleStartExpedition}
+          onClose={() => setShowNewColony(false)}
+        />
+      )}
 
       {selectedHex && (
         <div className="fixed inset-0 pointer-events-none z-20" onMouseDown={e => e.stopPropagation()}>

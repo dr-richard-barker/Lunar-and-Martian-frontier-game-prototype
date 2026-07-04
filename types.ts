@@ -71,9 +71,29 @@ export interface HexData {
   r: number;
   terrain: TerrainType;
   building: BuildingType | null;
-  /** Catan-style yield token (2-12, never 7). Null on craters. */
+  /** Faction that owns the building/construction on this tile, if any. */
+  owner: number | null;
+  /** Catan-style yield token (2-12, never 7). Null on craters and hubs. */
   diceValue: number | null;
   construction: Construction | null;
+}
+
+export type Archetype = 'PIONEERS' | 'TRADERS' | 'RACERS' | 'AGRARIANS';
+
+export interface Faction {
+  id: number;
+  name: string;
+  /** Primary identity color (hex string) painted on structures, rails, rovers. */
+  color: string;
+  archetype: Archetype;
+  isAI: boolean;
+  cityHexId: number;
+  resources: Stockpile;
+  population: number;
+  units: Unit[];
+  cityQueue: QueueItem[];
+  growthProgress: number;
+  declineProgress: number;
 }
 
 export interface BuildingDef {
@@ -90,9 +110,9 @@ export interface BuildingDef {
   consumption?: Partial<Stockpile>;
   /** Terrain this building requires. Undefined = any buildable terrain. */
   terrain?: TerrainType[];
-  /** Only one may exist in the colony. */
+  /** Only one may exist per faction. */
   unique?: boolean;
-  /** Whether the player can construct it (the CITY cannot be built). */
+  /** Whether it can be constructed (the CITY cannot be built). */
   buildable: boolean;
   /** Sols of on-site work a rover needs to finish it. */
   buildSols: number;
@@ -123,21 +143,15 @@ export interface DiceRoll {
 }
 
 export interface GameState {
-  colonyName: string;
   sol: number;
-  resources: Stockpile;
-  population: number;
+  boardRadius: number;
   board: HexData[];
-  units: Unit[];
-  cityQueue: QueueItem[];
+  factions: Faction[];
   lastRoll: DiceRoll | null;
   logs: string[];
   milestones: string[];
-  /** Internal counters for population growth/decline. */
-  growthProgress: number;
-  declineProgress: number;
   lastEventSol: number;
-  /** Monotonic id source for units and queue items. */
+  /** Monotonic id source for units and queue items across all factions. */
   nextId: number;
 }
 
@@ -146,4 +160,9 @@ export interface PowerReport {
   consumed: number;
   /** 0..1 efficiency applied to production when under-powered. */
   factor: number;
+}
+
+export interface NewGameOptions {
+  boardRadius: number;
+  aiCount: number;
 }

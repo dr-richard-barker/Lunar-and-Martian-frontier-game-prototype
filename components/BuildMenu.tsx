@@ -12,10 +12,13 @@ interface BuildMenuProps {
 }
 
 const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemolish, onClose }) => {
+  const player = gameState.factions[0];
   const terrain = TERRAIN_STYLES[hex.terrain];
   const currentBuilding = hex.building ? BUILDINGS[hex.building] : null;
-  const idle = idleWorkers(gameState.units).length;
-  const withinReach = isWithinReach(gameState.board, hex);
+  const idle = idleWorkers(player).length;
+  const withinReach = isWithinReach(gameState.board, player, hex);
+  const isMine = hex.owner === 0;
+  const rival = hex.owner !== null && hex.owner !== 0 ? gameState.factions[hex.owner] : null;
 
   return (
     <div className="hud-panel panel-in absolute right-6 top-1/2 -translate-y-1/2 w-80 max-h-[80vh] overflow-y-auto bg-slate-900/95 backdrop-blur-xl border border-slate-700 rounded-2xl shadow-2xl pointer-events-auto p-5 z-40">
@@ -42,8 +45,25 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
         </button>
       </div>
 
-      {/* Under construction */}
-      {hex.construction && (
+      {/* Rival territory */}
+      {rival && (
+        <div className="mb-4 p-3 rounded-xl border" style={{ borderColor: `${rival.color}55`, background: `${rival.color}0d` }}>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: rival.color }}>
+            {rival.name} territory
+          </p>
+          {(currentBuilding || hex.construction) && (
+            <p className="text-xs text-slate-300 mt-1.5">
+              {currentBuilding
+                ? `${currentBuilding.icon} ${currentBuilding.name}`
+                : `🏗️ Building ${BUILDINGS[hex.construction!.type].name}`}
+            </p>
+          )}
+          <p className="text-[9px] text-slate-500 mt-1.5">Rival structures cannot be modified.</p>
+        </div>
+      )}
+
+      {/* Under construction (own) */}
+      {isMine && hex.construction && (
         <div className="mb-4">
           <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-xl">
             <div className="flex items-center gap-3">
@@ -69,8 +89,8 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
         </div>
       )}
 
-      {/* Occupied tile */}
-      {currentBuilding && (
+      {/* Occupied tile (own) */}
+      {isMine && currentBuilding && (
         <div className="mb-4">
           <div className="flex items-center gap-3 bg-slate-800/60 p-3 rounded-xl border border-slate-700">
             <span className="text-3xl">{currentBuilding.icon}</span>
@@ -91,21 +111,21 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
       )}
 
       {/* Unbuildable terrain */}
-      {!currentBuilding && !hex.construction && !terrain.buildable && (
+      {!hex.building && !hex.construction && !terrain.buildable && (
         <p className="text-xs text-slate-500 italic p-3 bg-slate-800/40 rounded-xl">
           This crater is too unstable for construction. Rovers can't even cross it.
         </p>
       )}
 
       {/* Out of reach */}
-      {!currentBuilding && !hex.construction && terrain.buildable && !withinReach && (
+      {!hex.building && !hex.construction && terrain.buildable && !withinReach && (
         <p className="text-xs text-amber-400/80 p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl">
-          🛤️ Off the maglev network. Structures only work next to the Colony Hub or a connected track — lay Maglev Track segments outward to reach this sector.
+          🛤️ Off your maglev network. Structures only work next to your Colony Hub or a connected track — lay Maglev Track segments outward to reach this sector.
         </p>
       )}
 
       {/* Build options */}
-      {!currentBuilding && !hex.construction && terrain.buildable && withinReach && (
+      {!hex.building && !hex.construction && terrain.buildable && withinReach && (
         <div className="space-y-2">
           <div className="flex justify-between items-center mb-2">
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Construct</p>
@@ -117,7 +137,7 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
             .filter(type => BUILDINGS[type].buildable)
             .map(type => {
               const def = BUILDINGS[type];
-              const check = canBuild(gameState, hex, type);
+              const check = canBuild(gameState, 0, hex, type);
               return (
                 <button
                   key={type}
