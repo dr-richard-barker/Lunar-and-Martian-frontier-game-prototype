@@ -35,6 +35,13 @@ const moonFloorMat = buildMoonFloorMaterial();
 
 const railBedMat = new THREE.MeshStandardMaterial({ color: '#161e2c', roughness: 0.6, metalness: 0.5 });
 
+/** Upgrade module markers — small glowing chips on the tile edge. */
+const UPGRADE_MARKER_MATS: Record<string, THREE.MeshStandardMaterial> = {
+  OVERCLOCK: new THREE.MeshStandardMaterial({ color: '#fbbf24', emissive: '#f59e0b', emissiveIntensity: 2.2, toneMapped: false }),
+  EFFICIENCY: new THREE.MeshStandardMaterial({ color: '#4ade80', emissive: '#22c55e', emissiveIntensity: 2.2, toneMapped: false }),
+  AMPLIFIER: new THREE.MeshStandardMaterial({ color: '#c084fc', emissive: '#a855f7', emissiveIntensity: 2.2, toneMapped: false }),
+};
+
 /** Canvas-drawn Catan number token (offline, no font fetches). */
 const tokenTextureCache = new Map<string, THREE.CanvasTexture>();
 function tokenTexture(value: number): THREE.CanvasTexture {
@@ -166,6 +173,13 @@ const Tile = React.memo<TileProps>(({ hex, selected, frontier, surge, offline, r
           </Html>
         </group>
       )}
+
+      {/* Upgrade module chips */}
+      {(hex.upgrades ?? []).map((upgrade, i) => (
+        <mesh key={upgrade} position={[-0.55 + i * 0.16, top + 0.05, 0.62]} material={UPGRADE_MARKER_MATS[upgrade]}>
+          <boxGeometry args={[0.09, 0.05, 0.09]} />
+        </mesh>
+      ))}
 
       {/* Offline badge */}
       {offline && (

@@ -65,6 +65,19 @@ export interface Construction {
   total: number;
 }
 
+export enum UpgradeType {
+  OVERCLOCK = 'OVERCLOCK',
+  EFFICIENCY = 'EFFICIENCY',
+  AMPLIFIER = 'AMPLIFIER'
+}
+
+export interface UpgradeDef {
+  name: string;
+  icon: string;
+  description: string;
+  cost: Partial<Stockpile>;
+}
+
 export interface HexData {
   id: number;
   q: number;
@@ -76,6 +89,8 @@ export interface HexData {
   /** Catan-style yield token (2-12, never 7). Null on craters and hubs. */
   diceValue: number | null;
   construction: Construction | null;
+  /** Installed building upgrades (max 2 of the 3 available). */
+  upgrades: UpgradeType[];
 }
 
 export type Archetype = 'PIONEERS' | 'TRADERS' | 'RACERS' | 'AGRARIANS';
@@ -142,6 +157,13 @@ export interface DiceRoll {
   d2: number;
 }
 
+/** One dashboard sample per faction: population, structures, credits,
+ * life-support reserve (min of water/oxygen/food stocks). */
+export interface HistorySample {
+  sol: number;
+  f: { p: number; b: number; c: number; s: number }[];
+}
+
 export interface GameState {
   sol: number;
   boardRadius: number;
@@ -151,6 +173,8 @@ export interface GameState {
   logs: string[];
   milestones: string[];
   lastEventSol: number;
+  /** Rolling time series for the performance dashboard. */
+  history: HistorySample[];
   /** Monotonic id source for units and queue items across all factions. */
   nextId: number;
 }

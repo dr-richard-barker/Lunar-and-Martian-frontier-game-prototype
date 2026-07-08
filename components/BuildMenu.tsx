@@ -1,17 +1,18 @@
 import React from 'react';
-import { GameState, HexData, BuildingType, ResourceKind } from '../types';
-import { BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from '../constants';
-import { canBuild, idleWorkers, isWithinReach } from '../services/simulation';
+import { GameState, HexData, BuildingType, ResourceKind, UpgradeType } from '../types';
+import { BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES, UPGRADES, MAX_UPGRADES } from '../constants';
+import { canBuild, canUpgrade, idleWorkers, isWithinReach } from '../services/simulation';
 
 interface BuildMenuProps {
   gameState: GameState;
   hex: HexData;
   onBuild: (hexId: number, type: BuildingType) => void;
   onDemolish: (hexId: number) => void;
+  onUpgrade: (hexId: number, upgrade: UpgradeType) => void;
   onClose: () => void;
 }
 
-const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemolish, onClose }) => {
+const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemolish, onUpgrade, onClose }) => {
   const player = gameState.factions[0];
   const terrain = TERRAIN_STYLES[hex.terrain];
   const currentBuilding = hex.building ? BUILDINGS[hex.building] : null;
@@ -99,6 +100,63 @@ const BuildMenu: React.FC<BuildMenuProps> = ({ gameState, hex, onBuild, onDemoli
               <p className="text-[10px] text-slate-400 leading-snug mt-0.5">{currentBuilding.description}</p>
             </div>
           </div>
+          {/* Upgrade modules: three exist, two bays per structure */}
+          {hex.building !== BuildingType.ROAD && (
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-2">
+                <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Upgrade Modules</p>
+                <p className="text-[10px] font-mono text-slate-400">
+                  {(hex.upgrades ?? []).length}/{MAX_UPGRADES} bays
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {(Object.keys(UPGRADES) as UpgradeType[]).map(upgrade => {
+                  const def = UPGRADES[upgrade];
+                  const installed = (hex.upgrades ?? []).includes(upgrade);
+                  const check = canUpgrade(gameState, 0, hex, upgrade);
+                  return (
+                    <button
+                      key={upgrade}
+                      onClick={() => !installed && check.ok && onUpgrade(hex.id, upgrade)}
+                      disabled={installed || !check.ok}
+                      className={`w-full text-left p-2.5 rounded-xl border transition-all ${
+                        installed
+                          ? 'bg-emerald-900/25 border-emerald-600/60 cursor-default'
+                          : check.ok
+                            ? 'bg-slate-800/60 border-slate-600 hover:border-sky-500 hover:bg-slate-700/60 cursor-pointer'
+                            : 'bg-slate-800/20 border-slate-800 opacity-50 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-lg">{def.icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[11px] font-bold">{def.name}</span>
+                            {installed ? (
+                              <span className="text-[9px] font-bold text-emerald-400">INSTALLED</span>
+                            ) : (
+                              <span className="flex gap-2">
+                                {Object.entries(def.cost).map(([kind, amount]) => (
+                                  <span key={kind} className="text-[9px] font-mono text-slate-300">
+                                    {RESOURCE_STYLES[kind as ResourceKind].icon} {amount}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[9px] text-slate-400 leading-snug mt-0.5">{def.description}</p>
+                          {!installed && !check.ok && check.reason && (
+                            <p className="text-[9px] text-red-400 mt-0.5">{check.reason}</p>
+                          )}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {hex.building !== BuildingType.CITY && (
             <button
               onClick={() => onDemolish(hex.id)}

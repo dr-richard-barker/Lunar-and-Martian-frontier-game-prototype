@@ -1,6 +1,6 @@
 import {
   TerrainType, BuildingType, BuildingDef, ResourceKind, Stockpile, CityProduct, CityProductDef,
-  Archetype,
+  Archetype, UpgradeType, UpgradeDef,
 } from './types';
 
 export const HEX_RADIUS = 60;
@@ -9,7 +9,34 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v4';
+export const SAVE_KEY = 'lunar-frontier-save-v5';
+
+/** Dashboard time series: sample cadence (sols) and rolling cap. */
+export const HISTORY_INTERVAL = 2;
+export const HISTORY_CAP = 240;
+
+/** Building upgrades: three modules exist, but a building has only two bays. */
+export const MAX_UPGRADES = 2;
+export const UPGRADES: Record<UpgradeType, UpgradeDef> = {
+  [UpgradeType.OVERCLOCK]: {
+    name: 'Overclock Core',
+    icon: '⚡',
+    description: '+50% production. Generators add +2 MW; consumers draw 2 MW more.',
+    cost: { [ResourceKind.CREDITS]: 130, [ResourceKind.METAL]: 10 },
+  },
+  [UpgradeType.EFFICIENCY]: {
+    name: 'Efficiency Module',
+    icon: '♻️',
+    description: 'Halves input consumption and trims 1 MW off the power draw.',
+    cost: { [ResourceKind.CREDITS]: 100, [ResourceKind.METAL]: 15 },
+  },
+  [UpgradeType.AMPLIFIER]: {
+    name: 'Yield Amplifier',
+    icon: '🎲',
+    description: 'Dice surges on this tile pay triple instead of double.',
+    cost: { [ResourceKind.CREDITS]: 150, [ResourceKind.METAL]: 5 },
+  },
+};
 
 /** Selectable map sizes (hex count = 3r² + 3r + 1). */
 export const BOARD_SIZES: { radius: number; label: string; tiles: number }[] = [

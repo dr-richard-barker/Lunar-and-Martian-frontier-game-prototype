@@ -18,6 +18,7 @@ export function loadGame(): GameState | null {
     if (!parsed.board || typeof parsed.sol !== 'number') return null;
     if (!Array.isArray(parsed.factions) || parsed.factions.length === 0) return null;
     if (typeof parsed.boardRadius !== 'number') return null;
+    if (!Array.isArray(parsed.history)) parsed.history = [];
     return parsed;
   } catch {
     return null;

@@ -75,6 +75,13 @@ const NewColonyDialog: React.FC<NewColonyDialogProps> = ({ onStart, onClose }) =
           Toggle a faction to set how many land alongside you.
         </p>
 
+        <p className="text-[9px] text-slate-600 mb-4 text-center">
+          Created by Dr Richard Barker on behalf of{' '}
+          <a href="https://www.cosecloud.com" target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-300 underline">
+            The Collaborative Science Environment
+          </a>
+        </p>
+
         <div className="flex gap-2">
           <button
             onClick={onClose}

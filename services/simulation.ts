@@ -1,12 +1,12 @@
 import {
   GameState, HexData, TerrainType, BuildingType, ResourceKind, Stockpile, PowerReport, ColonyEvent,
-  Unit, CityProduct, QueueItem, Coord, Faction, NewGameOptions,
+  Unit, CityProduct, QueueItem, Coord, Faction, NewGameOptions, UpgradeType,
 } from '../types';
 import {
   BUILDINGS, TERRAIN_STYLES, SILICATE_SOLAR_BONUS, COLONIST_NEEDS, COLONIST_TAX,
   GROWTH_TICKS, DECLINE_TICKS, INITIAL_RESOURCES, INITIAL_POPULATION, MILESTONES,
   DICE_TOKEN_POOL, SURGE_MULTIPLIER, MAX_WORKERS, MAX_QUEUE, WORKER_SPEED, RAIL_SPEED,
-  CITY_PRODUCTS, FACTION_PRESETS,
+  CITY_PRODUCTS, FACTION_PRESETS, UPGRADES, MAX_UPGRADES, HISTORY_INTERVAL, HISTORY_CAP,
 } from '../constants';
 import { rollEvent } from './events';
 import { neighbors, findPath, hexDistance, boardMap, hexKey, HEX_DIRS } from './hexgrid';
@@ -62,6 +62,7 @@ export function generateBoard(radius: number, hubs: Coord[]): HexData[] {
         owner: hubIndex >= 0 ? hubIndex : null,
         diceValue,
         construction: null,
+        upgrades: [],
       });
     }
   }
@@ -112,7 +113,64 @@ export function newGame(options: NewGameOptions = { boardRadius: 4, aiCount: 0 }
     ],
     milestones: [],
     lastEventSol: 0,
+    history: [],
     nextId,
+  };
+}
+
+/** Combined effect of a tile's installed upgrade modules. */
+export function upgradeEffects(hex: HexData) {
+  const has = (u: UpgradeType) => hex.upgrades?.includes(u) ?? false;
+  return {
+    prodMult: has(UpgradeType.OVERCLOCK) ? 1.5 : 1,
+    consMult: has(UpgradeType.EFFICIENCY) ? 0.5 : 1,
+    surgeMult: has(UpgradeType.AMPLIFIER) ? 3 : SURGE_MULTIPLIER,
+    /** MW delta: generators gain from overclock; consumers pay for it and save with efficiency. */
+    powerDelta: (basePower: number) => {
+      if (basePower > 0) return has(UpgradeType.OVERCLOCK) ? 2 : 0;
+      let delta = 0;
+      if (has(UpgradeType.OVERCLOCK)) delta -= 2;
+      if (has(UpgradeType.EFFICIENCY)) delta += 1;
+      return delta;
+    },
+  };
+}
+
+export function canUpgrade(state: GameState, factionId: number, hex: HexData, upgrade: UpgradeType): { ok: boolean; reason?: string } {
+  const faction = state.factions[factionId];
+  if (hex.owner !== factionId || !hex.building) return { ok: false, reason: 'Not your structure' };
+  if (hex.building === BuildingType.ROAD) return { ok: false, reason: 'Track cannot host modules' };
+  const installed = hex.upgrades ?? [];
+  if (installed.includes(upgrade)) return { ok: false, reason: 'Already installed' };
+  if (installed.length >= MAX_UPGRADES) return { ok: false, reason: `Only ${MAX_UPGRADES} module bays per structure` };
+  for (const [kind, amount] of Object.entries(UPGRADES[upgrade].cost)) {
+    if (faction.resources[kind as ResourceKind] < amount) {
+      return { ok: false, reason: `Not enough ${kind.toLowerCase()}` };
+    }
+  }
+  return { ok: true };
+}
+
+export function applyUpgrade(state: GameState, factionId: number, hexId: number, upgrade: UpgradeType): GameState {
+  const hex = state.board.find(h => h.id === hexId);
+  const faction = state.factions[factionId];
+  if (!hex || !faction) return state;
+  const check = canUpgrade(state, factionId, hex, upgrade);
+  if (!check.ok) return state;
+
+  const resources = { ...faction.resources };
+  for (const [kind, amount] of Object.entries(UPGRADES[upgrade].cost)) {
+    resources[kind as ResourceKind] -= amount;
+  }
+  return {
+    ...state,
+    factions: state.factions.map(f => f.id === factionId ? { ...f, resources } : f),
+    board: state.board.map(h => h.id === hexId
+      ? { ...h, upgrades: [...(h.upgrades ?? []), upgrade] }
+      : h),
+    logs: faction.isAI
+      ? state.logs
+      : [...state.logs, `${UPGRADES[upgrade].icon} ${UPGRADES[upgrade].name} installed on ${BUILDINGS[hex.building!].name}.`].slice(-30),
   };
 }
 
@@ -170,6 +228,7 @@ export function getPowerReport(board: HexData[], faction: Faction): PowerReport 
     if (hex.building === BuildingType.SOLAR_ARRAY && hex.terrain === TerrainType.SILICATES) {
       power += SILICATE_SOLAR_BONUS;
     }
+    power += upgradeEffects(hex).powerDelta(BUILDINGS[hex.building].power);
     if (power >= 0) generated += power;
     else consumed += -power;
   }
@@ -215,11 +274,12 @@ export function getRates(state: GameState, faction: Faction): Stockpile {
   for (const hex of state.board) {
     if (!hex.building || hex.owner !== faction.id || !active.has(hex.id)) continue;
     const def = BUILDINGS[hex.building];
+    const fx = upgradeEffects(hex);
     for (const [kind, amount] of Object.entries(def.production ?? {})) {
-      rates[kind as ResourceKind] += amount * factor;
+      rates[kind as ResourceKind] += amount * fx.prodMult * factor;
     }
     for (const [kind, amount] of Object.entries(def.consumption ?? {})) {
-      rates[kind as ResourceKind] -= amount * factor;
+      rates[kind as ResourceKind] -= amount * fx.consMult * factor;
     }
   }
   for (const [kind, amount] of Object.entries(COLONIST_NEEDS)) {
@@ -357,7 +417,7 @@ export function demolish(state: GameState, factionId: number, hexId: number): Ga
   const next = updateFaction(state, factionId, { resources });
   return {
     ...next,
-    board: state.board.map(h => h.id === hexId ? { ...h, building: null, owner: null } : h),
+    board: state.board.map(h => h.id === hexId ? { ...h, building: null, owner: null, upgrades: [] } : h),
     logs: appendLog(state.logs, `${def.name} demolished. Salvaged ${Math.floor(metalCost / 2)} metal.`),
   };
 }
@@ -479,18 +539,19 @@ export function tick(state: GameState): TickResult {
     for (const hex of board) {
       if (!hex.building || hex.owner !== faction.id || !active.has(hex.id)) continue;
       const def = BUILDINGS[hex.building];
-      const surge = hex.diceValue === roll ? SURGE_MULTIPLIER : 1;
+      const fx = upgradeEffects(hex);
+      const surge = hex.diceValue === roll ? fx.surgeMult : 1;
       let inputScale = factor;
       for (const [kind, amount] of Object.entries(def.consumption ?? {})) {
         const available = resources[kind as ResourceKind];
-        const needed = amount * factor;
+        const needed = amount * fx.consMult * factor;
         if (needed > 0) inputScale = Math.min(inputScale, factor * Math.min(1, available / needed));
       }
       for (const [kind, amount] of Object.entries(def.consumption ?? {})) {
-        resources[kind as ResourceKind] = Math.max(0, resources[kind as ResourceKind] - amount * inputScale);
+        resources[kind as ResourceKind] = Math.max(0, resources[kind as ResourceKind] - amount * fx.consMult * inputScale);
       }
       for (const [kind, amount] of Object.entries(def.production ?? {})) {
-        resources[kind as ResourceKind] += amount * inputScale * surge;
+        resources[kind as ResourceKind] += amount * fx.prodMult * inputScale * surge;
       }
     }
 
@@ -625,6 +686,27 @@ export function tick(state: GameState): TickResult {
     }
   }
 
+  // Dashboard time series (rolling window).
+  let history = state.history ?? [];
+  if (state.sol % HISTORY_INTERVAL === 0) {
+    history = [
+      ...history,
+      {
+        sol: state.sol,
+        f: factions.map(f => ({
+          p: f.population,
+          b: countBuildings(board, f.id),
+          c: Math.round(f.resources[ResourceKind.CREDITS]),
+          s: Math.round(Math.min(
+            f.resources[ResourceKind.WATER],
+            f.resources[ResourceKind.OXYGEN],
+            f.resources[ResourceKind.FOOD],
+          )),
+        })),
+      },
+    ].slice(-HISTORY_CAP);
+  }
+
   return {
     state: {
       ...state,
@@ -635,6 +717,7 @@ export function tick(state: GameState): TickResult {
       lastEventSol,
       logs,
       milestones,
+      history,
       nextId,
     },
     event,

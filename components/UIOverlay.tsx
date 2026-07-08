@@ -15,6 +15,8 @@ interface UIOverlayProps {
   onSetSpeed: (speed: number) => void;
   onSave: () => void;
   onNewColony: () => void;
+  onToggleDashboard: () => void;
+  onDismissEvent: () => void;
   activeEvent: ColonyEvent | null;
   lore: string;
 }
@@ -32,6 +34,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   onSetSpeed,
   onSave,
   onNewColony,
+  onToggleDashboard,
+  onDismissEvent,
   activeEvent,
   lore,
 }) => {
@@ -126,6 +130,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
       {/* Event Modal */}
       {activeEvent && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 bg-slate-900/95 backdrop-blur-xl border-2 border-amber-500 p-8 rounded-3xl shadow-[0_0_50px_rgba(245,158,11,0.3)] pointer-events-auto z-50 event-pop">
+          <button
+            onClick={onDismissEvent}
+            className="absolute top-3 right-3 text-amber-400/70 hover:text-white text-xl leading-none w-8 h-8 rounded-full hover:bg-amber-500/20 transition-colors"
+            title="Dismiss alert"
+          >
+            ×
+          </button>
           <div className="flex items-center gap-4 text-amber-500 mb-4 border-b border-amber-500/30 pb-4">
             <span className="text-4xl">⚡</span>
             <div>
@@ -185,6 +196,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         <div className="flex flex-col gap-3 items-end pointer-events-auto">
           <div className="flex gap-2">
             <button
+              onClick={onToggleDashboard}
+              className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"
+              title="Colony performance dashboard"
+            >
+              📊 STATS
+            </button>
+            <button
               onClick={onToggleAutoplay}
               className={`px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-all backdrop-blur border ${
                 autoplay
@@ -234,6 +252,19 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
             Click your hub to train rovers · Click tiles to build
           </p>
         </div>
+      </div>
+
+      {/* Attribution */}
+      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 pointer-events-auto">
+        <a
+          href="https://www.cosecloud.com"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[9px] text-slate-600 hover:text-sky-400 transition-colors tracking-wide"
+          title="The Collaborative Science Environment"
+        >
+          Created by Dr Richard Barker · The Collaborative Science Environment · cosecloud.com
+        </a>
       </div>
     </div>
   );

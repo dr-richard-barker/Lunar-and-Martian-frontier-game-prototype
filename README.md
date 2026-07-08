@@ -1,5 +1,8 @@
 # Lunar & Martian Frontier
 
+Created by **Dr Richard Barker** on behalf of
+[**The Collaborative Science Environment**](https://www.cosecloud.com) (cosecloud.com).
+
 A standalone sandbox colony-building game that blends **SimCity**, **Settlers of
 Catan**, and **Civilization** — on the Moon. Grow a settlement outward from your
 Colony Hub on a 3D hexagonal board with CSS-3D buildings, dice-driven resource
@@ -45,6 +48,13 @@ Best played on a desktop browser with a mouse.
 - **Terrain** — 🌑 regolith (open construction), ❄️ ice deposits, 🌋 ore veins,
   💎 silicate flats, ⚡ helium-3 fields, ☄️ craters (unbuildable and impassable).
 - **Camera** — drag to orbit, scroll to zoom.
+- **📊 Dashboard** — the STATS button opens a performance dashboard: population,
+  structures, credits, and life-support reserves graphed over time for every
+  colony, so you can watch the strategies diverge.
+- **⚡ Upgrade modules** — every structure has two module bays and three modules
+  to choose from: Overclock Core (+50% output, more power), Efficiency Module
+  (half inputs, less power), and Yield Amplifier (triple dice surges). Pick two —
+  the AI factions pick pairs that match their personalities.
 - **🤖 Autoplay** — hit AUTOPLAY and watch the base build itself: an AI director
   prioritizes power, water, oxygen, food, housing, then industry, dispatches
   rovers, and orders shuttles while the camera slowly orbits the colony.

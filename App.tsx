@@ -4,11 +4,12 @@ import BuildMenu from './components/BuildMenu';
 import CityPanel from './components/CityPanel';
 import Board3D, { YieldPopup } from './components/Board3D';
 import NewColonyDialog from './components/NewColonyDialog';
-import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind, NewGameOptions } from './types';
+import DashboardPanel from './components/DashboardPanel';
+import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind, NewGameOptions, UpgradeType } from './types';
 import { TICK_MS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
   newGame, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
-  countBuildings, getAllActiveIds,
+  countBuildings, getAllActiveIds, applyUpgrade,
 } from './services/simulation';
 import { advanceSol } from './services/world';
 import { boardMap, hexKey, HEX_DIRS } from './services/hexgrid';
@@ -24,6 +25,7 @@ let popupId = 0;
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame({ boardRadius: 5, aiCount: 3 }));
   const [showNewColony, setShowNewColony] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [selectedHexId, setSelectedHexId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<ColonyEvent | null>(null);
@@ -171,6 +173,15 @@ const App: React.FC = () => {
     sfx.place();
   }, []);
 
+  const handleUpgrade = useCallback((hexId: number, upgrade: UpgradeType) => {
+    sfx.place();
+    setGameState(prev => {
+      const next = applyUpgrade(prev, 0, hexId, upgrade);
+      saveGame(next);
+      return next;
+    });
+  }, []);
+
   const handleToggleMute = useCallback(() => {
     setMutedState(prev => {
       setMuted(!prev);
@@ -285,9 +296,15 @@ const App: React.FC = () => {
         onSetSpeed={setSpeed}
         onSave={handleSave}
         onNewColony={handleNewColony}
+        onToggleDashboard={() => { sfx.click(); setShowDashboard(prev => !prev); }}
+        onDismissEvent={() => setActiveEvent(null)}
         activeEvent={activeEvent}
         lore={lore}
       />
+
+      {showDashboard && (
+        <DashboardPanel gameState={gameState} onClose={() => setShowDashboard(false)} />
+      )}
 
       {showNewColony && (
         <NewColonyDialog
@@ -311,6 +328,7 @@ const App: React.FC = () => {
               hex={selectedHex}
               onBuild={handleBuild}
               onDemolish={handleDemolish}
+              onUpgrade={handleUpgrade}
               onClose={() => setSelectedHexId(null)}
             />
           )}

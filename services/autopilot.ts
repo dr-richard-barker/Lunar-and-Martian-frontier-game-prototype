@@ -1,8 +1,8 @@
-import { GameState, HexData, TerrainType, BuildingType, ResourceKind, CityProduct, Faction, Archetype } from '../types';
+﻿import { GameState, HexData, TerrainType, BuildingType, ResourceKind, CityProduct, Faction, Archetype, UpgradeType } from '../types';
 import { BUILDINGS, TERRAIN_STYLES } from '../constants';
 import {
   getRates, getPowerReport, getHousing, countBuildings, countRails, idleWorkers, isWithinReach,
-  canBuild, canEnqueue, orderConstruction, enqueueProduct,
+  canBuild, canEnqueue, orderConstruction, enqueueProduct, canUpgrade, applyUpgrade, getActiveSet,
 } from './simulation';
 import { hexDistance } from './hexgrid';
 
@@ -24,13 +24,32 @@ interface Persona {
   foodTrigger: number;
   /** Extra appetite for laying rail beyond necessity. */
   railLove: boolean;
+  /** Preferred module pair (in install order) and the credit comfort level to shop at. */
+  upgradePair: [UpgradeType, UpgradeType];
+  upgradeAt: number;
 }
 
 const PERSONAS: Record<Archetype, Persona> = {
-  PIONEERS: { fleetFor: b => (b >= 8 ? 3 : 2), he3At: 420, padAt: 900, shuttleAt: 450, expandWhenSitesBelow: 2, housingCap: 42, foodTrigger: 0.35, railLove: false },
-  TRADERS: { fleetFor: b => (b >= 10 ? 3 : 2), he3At: 340, padAt: 650, shuttleAt: 520, expandWhenSitesBelow: 2, housingCap: 36, foodTrigger: 0.35, railLove: false },
-  RACERS: { fleetFor: b => (b >= 6 ? 4 : b >= 3 ? 3 : 2), he3At: 500, padAt: 1000, shuttleAt: 450, expandWhenSitesBelow: 5, housingCap: 36, foodTrigger: 0.35, railLove: true },
-  AGRARIANS: { fleetFor: b => (b >= 8 ? 3 : 2), he3At: 520, padAt: 950, shuttleAt: 380, expandWhenSitesBelow: 2, housingCap: 60, foodTrigger: 0.6, railLove: false },
+  PIONEERS: {
+    fleetFor: b => (b >= 8 ? 3 : 2), he3At: 420, padAt: 900, shuttleAt: 450,
+    expandWhenSitesBelow: 2, housingCap: 42, foodTrigger: 0.35, railLove: false,
+    upgradePair: [UpgradeType.EFFICIENCY, UpgradeType.OVERCLOCK], upgradeAt: 300,
+  },
+  TRADERS: {
+    fleetFor: b => (b >= 10 ? 3 : 2), he3At: 340, padAt: 650, shuttleAt: 520,
+    expandWhenSitesBelow: 2, housingCap: 36, foodTrigger: 0.35, railLove: false,
+    upgradePair: [UpgradeType.OVERCLOCK, UpgradeType.AMPLIFIER], upgradeAt: 250,
+  },
+  RACERS: {
+    fleetFor: b => (b >= 6 ? 4 : b >= 3 ? 3 : 2), he3At: 500, padAt: 1000, shuttleAt: 450,
+    expandWhenSitesBelow: 5, housingCap: 36, foodTrigger: 0.35, railLove: true,
+    upgradePair: [UpgradeType.OVERCLOCK, UpgradeType.EFFICIENCY], upgradeAt: 290,
+  },
+  AGRARIANS: {
+    fleetFor: b => (b >= 8 ? 3 : 2), he3At: 520, padAt: 950, shuttleAt: 380,
+    expandWhenSitesBelow: 2, housingCap: 60, foodTrigger: 0.6, railLove: false,
+    upgradePair: [UpgradeType.EFFICIENCY, UpgradeType.AMPLIFIER], upgradeAt: 270,
+  },
 };
 
 /** Credits kept in reserve for non-critical construction. */
@@ -98,9 +117,14 @@ function hasMine(state: GameState, faction: Faction): boolean {
   );
 }
 
-/** Metal held back for a future mining rig while none exists. */
+/** Metal held back for a future mining rig while none exists — released
+ * entirely if rivals have claimed every ore tile (no rig will ever come). */
 function metalReserve(state: GameState, faction: Faction): number {
-  return hasMine(state, faction) ? 0 : 12;
+  if (hasMine(state, faction)) return 0;
+  const oreAvailable = state.board.some(h =>
+    h.terrain === TerrainType.ORES && !h.building && !h.construction
+  );
+  return oreAvailable ? 12 : 0;
 }
 
 function tryOrder(
@@ -114,7 +138,7 @@ function tryOrder(
   if (!site) return null;
   const creditCost = BUILDINGS[type].cost[ResourceKind.CREDITS] ?? 0;
   if (faction.resources[ResourceKind.CREDITS] < creditCost + floor) return null;
-  if (!lifeSupport && type !== BuildingType.MINING_RIG && type !== BuildingType.ROAD) {
+  if (!lifeSupport && type !== BuildingType.MINING_RIG) {
     const metalCost = BUILDINGS[type].cost[ResourceKind.METAL] ?? 0;
     if (faction.resources[ResourceKind.METAL] < metalCost + metalReserve(state, faction)) return null;
   }
@@ -149,6 +173,17 @@ function cityStep(state: GameState, faction: Faction, persona: Persona): GameSta
     faction.population < 3 &&
     R[ResourceKind.WATER] > 25 && R[ResourceKind.OXYGEN] > 25 && R[ResourceKind.FOOD] > 25 &&
     crisisRates[ResourceKind.FOOD] > 0.4 && crisisRates[ResourceKind.OXYGEN] > 0.4 &&
+    R[ResourceKind.CREDITS] >= 400 &&
+    !shuttleQueued &&
+    canEnqueue(state, faction.id, CityProduct.COLONIST_SHUTTLE).ok
+  ) {
+    return enqueueProduct(state, faction.id, CityProduct.COLONIST_SHUTTLE);
+  }
+  // Deep-pantry rescue: with big stockpiles, arrivals are safe even if the
+  // (possibly power-throttled) production rates look weak right now.
+  if (
+    faction.population < 3 &&
+    R[ResourceKind.WATER] > 60 && R[ResourceKind.OXYGEN] > 60 && R[ResourceKind.FOOD] > 60 &&
     R[ResourceKind.CREDITS] >= 400 &&
     !shuttleQueued &&
     canEnqueue(state, faction.id, CityProduct.COLONIST_SHUTTLE).ok
@@ -205,9 +240,14 @@ function buildStep(state: GameState, faction: Faction, persona: Persona): GameSt
   const pending = (type: BuildingType) =>
     state.board.some(h => h.owner === faction.id && h.construction?.type === type);
 
-  // 1. Power — everything else throttles without it.
+  // 1. Power — everything else throttles without it. An actively overloaded
+  // grid is a survival emergency and bypasses the mining metal reserve.
   if ((power.factor < 1 || power.generated - power.consumed < 3) && !pending(BuildingType.SOLAR_ARRAY)) {
-    const next = tryOrder(state, faction, BuildingType.SOLAR_ARRAY, genericSite(state, faction, TerrainType.SILICATES));
+    const next = tryOrder(
+      state, faction, BuildingType.SOLAR_ARRAY,
+      genericSite(state, faction, TerrainType.SILICATES),
+      0, power.factor < 1,
+    );
     if (next) return next;
   }
   // 1b. Metal emergency.
@@ -306,6 +346,40 @@ function buildStep(state: GameState, faction: Faction, persona: Persona): GameSt
   return state;
 }
 
+/** Install the persona's preferred modules on production buildings, one per sol. */
+function upgradeStep(state: GameState, faction: Faction, persona: Persona): GameState {
+  if (faction.resources[ResourceKind.CREDITS] < persona.upgradeAt) return state;
+  // Never shop for modules during a population crisis — that budget is the
+  // rescue shuttle's.
+  if (faction.population < 4) return state;
+  const vitals = getRates(state, faction);
+  if (vitals[ResourceKind.FOOD] < 0 || vitals[ResourceKind.OXYGEN] < 0 || vitals[ResourceKind.WATER] < 0) return state;
+  const active = getActiveSet(state.board, faction);
+  // Upgrade the most valuable producers first: He-3, then mines, then the rest.
+  const priority = (h: HexData) =>
+    h.building === BuildingType.HE3_EXTRACTOR ? 0 :
+    h.building === BuildingType.MINING_RIG ? 1 :
+    h.building === BuildingType.LAUNCH_PAD ? 2 : 3;
+  const candidates = state.board
+    .filter(h =>
+      h.owner === faction.id && h.building && active.has(h.id) &&
+      h.building !== BuildingType.ROAD && h.building !== BuildingType.CITY &&
+      BUILDINGS[h.building].production &&
+      (h.upgrades?.length ?? 0) < persona.upgradePair.length &&
+      persona.upgradePair.some(u => !(h.upgrades ?? []).includes(u))
+    )
+    .sort((a, b) => priority(a) - priority(b) || (a.upgrades?.length ?? 0) - (b.upgrades?.length ?? 0));
+  for (const hex of candidates) {
+    for (const upgrade of persona.upgradePair) {
+      if ((hex.upgrades ?? []).includes(upgrade)) continue;
+      if (canUpgrade(state, faction.id, hex, upgrade).ok) {
+        return applyUpgrade(state, faction.id, hex.id, upgrade);
+      }
+    }
+  }
+  return state;
+}
+
 /** One autopilot pass for a faction. Call once per sol after tick(). */
 export function autopilotFaction(state: GameState, factionId: number): GameState {
   const faction = state.factions[factionId];
@@ -313,6 +387,7 @@ export function autopilotFaction(state: GameState, factionId: number): GameState
   const persona = PERSONAS[faction.archetype];
   let next = cityStep(state, faction, persona);
   next = buildStep(next, next.factions[factionId], persona);
+  next = upgradeStep(next, next.factions[factionId], persona);
   return next;
 }
 
