@@ -8,7 +8,7 @@ export default defineConfig({
   // project sites (username.github.io/repo/), custom domains, or file://.
   base: './',
   server: {
-    port: 3000,
+    port: Number(process.env.PORT) || 3000,
     host: '0.0.0.0',
   },
   plugins: [react(), tailwindcss()],

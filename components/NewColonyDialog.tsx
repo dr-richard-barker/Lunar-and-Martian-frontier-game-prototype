@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NewGameOptions } from '../types';
+import { NewGameOptions, World } from '../types';
 import { BOARD_SIZES, FACTION_PRESETS } from '../constants';
 
 interface NewColonyDialogProps {
@@ -7,7 +7,13 @@ interface NewColonyDialogProps {
   onClose: () => void;
 }
 
+const WORLDS: { world: World; icon: string; name: string; blurb: string }[] = [
+  { world: 'MOON', icon: '🌑', name: 'The Moon', blurb: 'Gray maria, Earth overhead. The classic frontier.' },
+  { world: 'MARS', icon: '🔴', name: 'Mars', blurb: 'Red rock, the Valles Marineris chasm, Olympus Mons, Phobos overhead.' },
+];
+
 const NewColonyDialog: React.FC<NewColonyDialogProps> = ({ onStart, onClose }) => {
+  const [world, setWorld] = useState<World>('MOON');
   const [radius, setRadius] = useState(5);
   const [aiCount, setAiCount] = useState(3);
 
@@ -18,6 +24,27 @@ const NewColonyDialog: React.FC<NewColonyDialogProps> = ({ onStart, onClose }) =
         <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] mb-5">
           Abandons the current colony and its save
         </p>
+
+        {/* World */}
+        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Destination World</p>
+        <div className="flex gap-2 mb-5">
+          {WORLDS.map(w => (
+            <button
+              key={w.world}
+              onClick={() => { setWorld(w.world); if (w.world === 'MARS' && radius < 6) setRadius(6); }}
+              className={`flex-1 p-3 rounded-xl border transition-all text-left ${
+                world === w.world
+                  ? w.world === 'MARS'
+                    ? 'bg-orange-600/25 border-orange-500 text-white shadow-[0_0_12px_rgba(234,88,12,0.35)]'
+                    : 'bg-sky-600/30 border-sky-500 text-white shadow-[0_0_12px_rgba(14,165,233,0.3)]'
+                  : 'bg-slate-800/50 border-slate-700 text-slate-400 hover:border-slate-500'
+              }`}
+            >
+              <span className="block text-sm font-bold">{w.icon} {w.name}</span>
+              <span className="block text-[9px] mt-1 leading-snug opacity-80">{w.blurb}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Map size */}
         <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Landing Zone</p>
@@ -90,7 +117,7 @@ const NewColonyDialog: React.FC<NewColonyDialogProps> = ({ onStart, onClose }) =
             CANCEL
           </button>
           <button
-            onClick={() => onStart({ boardRadius: radius, aiCount })}
+            onClick={() => onStart({ boardRadius: radius, aiCount, world })}
             className="flex-1 bg-sky-600 hover:bg-sky-500 border-b-4 border-sky-800 text-white py-3 rounded-xl text-xs font-orbitron tracking-widest transition-all shadow-[0_0_20px_rgba(2,132,199,0.4)]"
           >
             LAUNCH 🚀

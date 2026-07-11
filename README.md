@@ -21,6 +21,12 @@ Best played on a desktop browser with a mouse.
 
 ## How to Play
 
+- **🔴 Two worlds** — colonize the Moon (gray maria, Earth overhead) or Mars: a
+  bigger red world split by the impassable **Valles Marineris** chasm (route your
+  rails around its east/west passes), crowned by **Olympus Mons**, with lumpy
+  little **Phobos** hanging in the butterscotch sky.
+- **🎨 Civilization style** — toggle between NEON (cyberpunk glow) and NASA
+  (realistic matte hardware with status-light-level emissives) at any time.
 - **⚔️ Rival colonies** — up to three AI factions land alongside you, each building
   its own city, rail network, and rover fleet in its own colors: the gold
   **Meridian Trade Guild** (traders — rush He-3 exports), the crimson **Helios

@@ -1,7 +1,34 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { BuildingType } from '../types';
+import { BuildingType, VisualStyle } from '../types';
+
+/**
+ * Visual style switch: NEON keeps the cyberpunk emissive glow; NASA damps
+ * every emissive to realistic status-light levels for a utilitarian,
+ * photo-real hardware look. Materials register here so the style can be
+ * applied live, including to faction accents created later.
+ */
+const EMISSIVE_REGISTRY: { m: THREE.MeshStandardMaterial; base: number }[] = [];
+let currentStyle: VisualStyle = 'NEON';
+
+function styleMaterial(entry: { m: THREE.MeshStandardMaterial; base: number }, style: VisualStyle) {
+  entry.m.emissiveIntensity = style === 'NASA' ? Math.min(entry.base, 0.5) : entry.base;
+  entry.m.toneMapped = style === 'NASA';
+  entry.m.needsUpdate = true;
+}
+
+export function registerEmissive<T extends THREE.MeshStandardMaterial>(m: T): T {
+  const entry = { m, base: m.emissiveIntensity };
+  EMISSIVE_REGISTRY.push(entry);
+  if (currentStyle !== 'NEON') styleMaterial(entry, currentStyle);
+  return m;
+}
+
+export function applyVisualStyle(style: VisualStyle): void {
+  currentStyle = style;
+  for (const entry of EMISSIVE_REGISTRY) styleMaterial(entry, style);
+}
 
 /**
  * WebGL building models — stylized chunky geometry with PBR materials and
@@ -37,6 +64,8 @@ export const MATS = {
     transparent: true, opacity: 0.85, toneMapped: false,
   }),
 };
+[MATS.neonCyan, MATS.neonViolet, MATS.neonOrange, MATS.neonGreen, MATS.neonRed, MATS.growLight]
+  .forEach(registerEmissive);
 
 /** Faction identity materials, cached per color. */
 export interface AccentMats {
@@ -49,8 +78,8 @@ export function getAccent(color: string): AccentMats {
   const cached = accentCache.get(color);
   if (cached) return cached;
   const mats: AccentMats = {
-    neon: new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.6, toneMapped: false }),
-    soft: new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.3, toneMapped: false }),
+    neon: registerEmissive(new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.6, toneMapped: false })),
+    soft: registerEmissive(new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.3, toneMapped: false })),
     chassis: new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.25 }),
   };
   accentCache.set(color, mats);
@@ -122,17 +151,22 @@ const Beacon = ({ p, mat, period = 1.4 }: { p: [number, number, number]; mat: TH
   );
 };
 
-/** Pulsing emissive core (drills, reactors). */
+/** Pulsing emissive core (drills, reactors). Tracks the source material's
+ * live intensity so the NASA/NEON style switch applies to clones too. */
 const PulseCore = ({ args, p, mat }: { args: [number, number, number, number]; p: [number, number, number]; mat: THREE.Material }) => {
   const ref = useRef<THREE.Mesh>(null);
-  const base = useMemo(() => (mat as THREE.MeshStandardMaterial).emissiveIntensity, [mat]);
-  const cloned = useMemo(() => (mat as THREE.MeshStandardMaterial).clone(), [mat]);
+  const source = mat as THREE.MeshStandardMaterial;
+  const cloned = useRef<THREE.MeshStandardMaterial | null>(null);
+  if (!cloned.current) cloned.current = source.clone();
   useFrame(({ clock }) => {
     const m = ref.current?.material as THREE.MeshStandardMaterial | undefined;
-    if (m) m.emissiveIntensity = base * (0.65 + 0.35 * Math.sin(clock.elapsedTime * 3));
+    if (m) {
+      m.emissiveIntensity = source.emissiveIntensity * (0.65 + 0.35 * Math.sin(clock.elapsedTime * 3));
+      if (m.toneMapped !== source.toneMapped) { m.toneMapped = source.toneMapped; m.needsUpdate = true; }
+    }
   });
   return (
-    <mesh ref={ref} position={p} material={cloned}>
+    <mesh ref={ref} position={p} material={cloned.current}>
       <cylinderGeometry args={args} />
     </mesh>
   );

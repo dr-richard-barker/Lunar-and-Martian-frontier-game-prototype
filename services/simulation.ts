@@ -1,6 +1,6 @@
 import {
   GameState, HexData, TerrainType, BuildingType, ResourceKind, Stockpile, PowerReport, ColonyEvent,
-  Unit, CityProduct, QueueItem, Coord, Faction, NewGameOptions, UpgradeType,
+  Unit, CityProduct, QueueItem, Coord, Faction, NewGameOptions, UpgradeType, World,
 } from '../types';
 import {
   BUILDINGS, TERRAIN_STYLES, SILICATE_SOLAR_BONUS, COLONIST_NEEDS, COLONIST_TAX,
@@ -9,7 +9,7 @@ import {
   CITY_PRODUCTS, FACTION_PRESETS, UPGRADES, MAX_UPGRADES, HISTORY_INTERVAL, HISTORY_CAP,
 } from '../constants';
 import { rollEvent } from './events';
-import { neighbors, findPath, hexDistance, boardMap, hexKey, HEX_DIRS } from './hexgrid';
+import { neighbors, findPath, hexDistance, boardMap, hexKey, HEX_DIRS, IMPASSABLE } from './hexgrid';
 
 const EVENT_AMBIENT_CHANCE = 0.02;
 const EVENT_AMBIENT_GAP = 14;
@@ -27,7 +27,7 @@ function hubPositions(count: number, radius: number): Coord[] {
   return picks.map(i => ({ q: HUB_CORNERS[i].q * d, r: HUB_CORNERS[i].r * d }));
 }
 
-export function generateBoard(radius: number, hubs: Coord[]): HexData[] {
+export function generateBoard(radius: number, hubs: Coord[], world: World = 'MOON'): HexData[] {
   const hexes: HexData[] = [];
   let id = 0;
   const weighted: TerrainType[] = [
@@ -66,14 +66,39 @@ export function generateBoard(radius: number, hubs: Coord[]): HexData[] {
       });
     }
   }
+
+  if (world === 'MARS') {
+    // Valles Marineris: an impassable chasm across the center, with open
+    // passes at the east and west edges so rovers can route around it.
+    const canyonHalf = radius >= 5 ? 1 : 0;
+    for (const hex of hexes) {
+      const xPos = hex.q + hex.r / 2;
+      const nearHub = hubs.some(h => hexDistance(hex, h) <= 1);
+      if (!nearHub && Math.abs(hex.r) <= canyonHalf && Math.abs(xPos) <= radius * 0.72) {
+        hex.terrain = TerrainType.CANYON;
+        hex.diceValue = null;
+      }
+    }
+    // Olympus Mons: one towering shield volcano clear of every hub.
+    const target: Coord = { q: Math.round(radius * 0.5), r: -Math.round(radius * 0.55) };
+    const mons = hexes
+      .filter(h =>
+        h.terrain !== TerrainType.CANYON && !h.building &&
+        hubs.every(hub => hexDistance(h, hub) >= 3))
+      .sort((a, b) => hexDistance(a, target) - hexDistance(b, target))[0];
+    if (mons) {
+      mons.terrain = TerrainType.OLYMPUS;
+      mons.diceValue = null;
+    }
+  }
   return hexes;
 }
 
-export function newGame(options: NewGameOptions = { boardRadius: 4, aiCount: 0 }): GameState {
+export function newGame(options: NewGameOptions = { boardRadius: 4, aiCount: 0, world: 'MOON' }): GameState {
   const factionCount = 1 + Math.max(0, Math.min(3, options.aiCount));
   const radius = options.boardRadius;
   const hubs = hubPositions(factionCount, radius);
-  const board = generateBoard(radius, hubs);
+  const board = generateBoard(radius, hubs, options.world);
   const map = boardMap(board);
 
   let nextId = 1;
@@ -81,7 +106,7 @@ export function newGame(options: NewGameOptions = { boardRadius: 4, aiCount: 0 }
     const preset = FACTION_PRESETS[i];
     const cityHex = map.get(hexKey(hub))!;
     // First rover starts on a free neighbor of its hub.
-    const spawn = neighbors(board, cityHex).find(n => n.terrain !== TerrainType.CRATER) ?? cityHex;
+    const spawn = neighbors(board, cityHex).find(n => !IMPASSABLE.has(n.terrain)) ?? cityHex;
     return {
       id: i,
       name: preset.name,
@@ -101,6 +126,7 @@ export function newGame(options: NewGameOptions = { boardRadius: 4, aiCount: 0 }
   const rivals = factions.slice(1).map(f => f.name).join(', ');
   return {
     sol: 1,
+    world: options.world,
     boardRadius: radius,
     board,
     factions,
@@ -658,7 +684,7 @@ export function tick(state: GameState): TickResult {
       if (remaining <= 0) {
         const builtType = hex.construction.type;
         board = board.map(h => h.id === hex.id ? { ...h, building: builtType, construction: null } : h);
-        const spot = neighbors(board, hex).find(n => n.terrain !== TerrainType.CRATER && !n.building);
+        const spot = neighbors(board, hex).find(n => !IMPASSABLE.has(n.terrain) && !n.building);
         faction.units = faction.units.map(u => u.id === unit.id
           ? { ...u, q: spot?.q ?? u.q, r: spot?.r ?? u.r, targetHexId: null, state: 'idle' as const }
           : u);

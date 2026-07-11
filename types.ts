@@ -4,8 +4,12 @@ export enum TerrainType {
   ORES = 'ORES',           // Metal-rich rock — mining
   SILICATES = 'SILICATES', // Reflective flats — boosts solar arrays
   HE3 = 'HE3',             // Helium-3 rich regolith — high-value export
-  CRATER = 'CRATER'        // Impact crater — unbuildable, impassable
+  CRATER = 'CRATER',       // Impact crater — unbuildable, impassable
+  CANYON = 'CANYON',       // Mars: Valles Marineris — unbuildable, impassable chasm
+  OLYMPUS = 'OLYMPUS'      // Mars: Olympus Mons — unbuildable, impassable shield volcano
 }
+
+export type World = 'MOON' | 'MARS';
 
 export enum BuildingType {
   CITY = 'CITY',
@@ -166,6 +170,7 @@ export interface HistorySample {
 
 export interface GameState {
   sol: number;
+  world: World;
   boardRadius: number;
   board: HexData[];
   factions: Faction[];
@@ -189,4 +194,7 @@ export interface PowerReport {
 export interface NewGameOptions {
   boardRadius: number;
   aiCount: number;
+  world: World;
 }
+
+export type VisualStyle = 'NEON' | 'NASA';

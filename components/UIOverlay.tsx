@@ -1,5 +1,5 @@
 import React from 'react';
-import { GameState, ResourceKind, ColonyEvent } from '../types';
+import { GameState, ResourceKind, ColonyEvent, VisualStyle } from '../types';
 import { RESOURCE_STYLES } from '../constants';
 import { getPowerReport, getHousing, getRates, idleWorkers, countBuildings } from '../services/simulation';
 import Dice3D from './Dice3D';
@@ -10,6 +10,8 @@ interface UIOverlayProps {
   isRolling: boolean;
   muted: boolean;
   autoplay: boolean;
+  visualStyle: VisualStyle;
+  onToggleStyle: () => void;
   onToggleMute: () => void;
   onToggleAutoplay: () => void;
   onSetSpeed: (speed: number) => void;
@@ -29,6 +31,8 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   isRolling,
   muted,
   autoplay,
+  visualStyle,
+  onToggleStyle,
   onToggleMute,
   onToggleAutoplay,
   onSetSpeed,
@@ -56,7 +60,9 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
       <div className="flex justify-between items-start gap-4">
         <div className="hud-panel bg-slate-900/80 backdrop-blur-md border border-slate-700 p-4 rounded-xl pointer-events-auto shadow-2xl">
           <h1 className="text-2xl font-orbitron tracking-wider" style={{ color: player.color }}>{player.name}</h1>
-          <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] mt-1">Lunar Frontier · Sandbox Colony</p>
+          <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] mt-1">
+            {(gameState.world ?? 'MOON') === 'MARS' ? 'Martian Frontier · Valles Marineris Region' : 'Lunar Frontier · Sandbox Colony'}
+          </p>
           <div className="mt-3 flex gap-5 text-center">
             <div>
               <p className="text-[9px] uppercase text-slate-500 font-bold tracking-widest">Sol</p>
@@ -195,6 +201,13 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
         {/* Time & Session Controls */}
         <div className="flex flex-col gap-3 items-end pointer-events-auto">
           <div className="flex gap-2">
+            <button
+              onClick={onToggleStyle}
+              className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"
+              title="Toggle civilization style: neon cyberpunk vs realistic NASA hardware"
+            >
+              🎨 {visualStyle === 'NASA' ? 'NASA' : 'NEON'}
+            </button>
             <button
               onClick={onToggleDashboard}
               className="bg-slate-800/90 hover:bg-slate-700 border border-slate-600 text-slate-300 px-4 py-2 rounded-xl text-[10px] font-bold tracking-widest transition-colors backdrop-blur"

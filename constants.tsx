@@ -9,7 +9,7 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v5';
+export const SAVE_KEY = 'lunar-frontier-save-v6';
 
 /** Dashboard time series: sample cadence (sols) and rolling cap. */
 export const HISTORY_INTERVAL = 2;
@@ -73,6 +73,8 @@ export const TERRAIN_STYLES: Record<TerrainType, { color: string; icon: string; 
   [TerrainType.SILICATES]: { color: '#f59e0b', icon: '💎', label: 'Silicate Flats', buildable: true },
   [TerrainType.HE3]: { color: '#8b5cf6', icon: '⚡', label: 'Helium-3 Field', buildable: true },
   [TerrainType.CRATER]: { color: '#1e293b', icon: '☄️', label: 'Impact Crater', buildable: false },
+  [TerrainType.CANYON]: { color: '#7c2d12', icon: '🏜️', label: 'Valles Marineris', buildable: false },
+  [TerrainType.OLYMPUS]: { color: '#9a3412', icon: '⛰️', label: 'Olympus Mons', buildable: false },
 };
 
 export const RESOURCE_STYLES: Record<ResourceKind, { icon: string; label: string; color: string }> = {

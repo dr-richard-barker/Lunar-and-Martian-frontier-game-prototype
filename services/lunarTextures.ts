@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TerrainType } from '../types';
+import { TerrainType, World } from '../types';
 
 /**
  * Procedural lunar surface textures, generated at runtime on 2D canvas —
@@ -122,11 +122,25 @@ function lunarMaps({ size, base, seed, craters, craterMin, craterMax, accents }:
 
   const map = new THREE.CanvasTexture(colorCanvas);
   const bump = new THREE.CanvasTexture(bumpCanvas);
-  map.anisotropy = 8;
-  bump.anisotropy = 4;
+  map.anisotropy = 16;
+  bump.anisotropy = 8;
   map.colorSpace = THREE.SRGBColorSpace;
   return { map, bump };
 }
+
+/** Wind-carved striations for Martian canyon walls and dune fields. */
+const striationAccents = (tint: string) => (c: CanvasRenderingContext2D, rand: Rand, size: number) => {
+  c.lineCap = 'round';
+  for (let i = 0; i < 26; i++) {
+    c.strokeStyle = `rgba(${tint},${0.1 + rand() * 0.2})`;
+    c.lineWidth = 2 + rand() * 6;
+    const y = rand() * size;
+    c.beginPath();
+    c.moveTo(0, y);
+    c.bezierCurveTo(size * 0.3, y + (rand() - 0.5) * 40, size * 0.7, y + (rand() - 0.5) * 40, size, y + (rand() - 0.5) * 30);
+    c.stroke();
+  }
+};
 
 // --- Mineral accent passes ---
 
@@ -222,34 +236,51 @@ const he3Accents = (c: CanvasRenderingContext2D, rand: Rand, size: number) => {
 
 // --- Terrain material factory ---
 
-/** Realistic regolith base tones (UI accent colors stay in TERRAIN_STYLES). */
-const TERRAIN_SURFACE_3D: Record<TerrainType, {
+interface SurfaceCfg {
   base: string; side: string; rough: number; metal: number;
   craters: number; accents?: LunarOpts['accents'];
-}> = {
-  [TerrainType.REGOLITH]: { base: '#8b8e96', side: '#565962', rough: 0.95, metal: 0.02, craters: 26 },
-  [TerrainType.ICE]: { base: '#a8c4d6', side: '#5f7889', rough: 0.45, metal: 0.05, craters: 16, accents: iceAccents },
-  [TerrainType.ORES]: { base: '#7d5843', side: '#4a3428', rough: 0.85, metal: 0.15, craters: 20, accents: oreAccents },
-  [TerrainType.SILICATES]: { base: '#a8946e', side: '#645741', rough: 0.7, metal: 0.3, craters: 18, accents: silicateAccents },
-  [TerrainType.HE3]: { base: '#6b6178', side: '#413a4c', rough: 0.85, metal: 0.1, craters: 20, accents: he3Accents },
-  [TerrainType.CRATER]: { base: '#4e5058', side: '#2e3038', rough: 0.98, metal: 0, craters: 46 },
+}
+
+/** Realistic regolith base tones per world (UI accents stay in TERRAIN_STYLES). */
+const SURFACES: Record<World, Record<TerrainType, SurfaceCfg>> = {
+  MOON: {
+    [TerrainType.REGOLITH]: { base: '#8b8e96', side: '#565962', rough: 0.95, metal: 0.02, craters: 26 },
+    [TerrainType.ICE]: { base: '#a8c4d6', side: '#5f7889', rough: 0.45, metal: 0.05, craters: 16, accents: iceAccents },
+    [TerrainType.ORES]: { base: '#7d5843', side: '#4a3428', rough: 0.85, metal: 0.15, craters: 20, accents: oreAccents },
+    [TerrainType.SILICATES]: { base: '#a8946e', side: '#645741', rough: 0.7, metal: 0.3, craters: 18, accents: silicateAccents },
+    [TerrainType.HE3]: { base: '#6b6178', side: '#413a4c', rough: 0.85, metal: 0.1, craters: 20, accents: he3Accents },
+    [TerrainType.CRATER]: { base: '#4e5058', side: '#2e3038', rough: 0.98, metal: 0, craters: 46 },
+    [TerrainType.CANYON]: { base: '#3f4046', side: '#26272c', rough: 0.98, metal: 0, craters: 30 },
+    [TerrainType.OLYMPUS]: { base: '#6f7178', side: '#44454b', rough: 0.95, metal: 0, craters: 20 },
+  },
+  MARS: {
+    [TerrainType.REGOLITH]: { base: '#a4553a', side: '#63321f', rough: 0.95, metal: 0.02, craters: 22, accents: striationAccents('120,58,32') },
+    [TerrainType.ICE]: { base: '#a1705c', side: '#5e4032', rough: 0.5, metal: 0.05, craters: 14, accents: iceAccents },
+    [TerrainType.ORES]: { base: '#5d3627', side: '#361d13', rough: 0.85, metal: 0.15, craters: 18, accents: oreAccents },
+    [TerrainType.SILICATES]: { base: '#c07a3d', side: '#754823', rough: 0.7, metal: 0.3, craters: 14, accents: silicateAccents },
+    [TerrainType.HE3]: { base: '#7d4b63', side: '#4a2b3a', rough: 0.85, metal: 0.1, craters: 16, accents: he3Accents },
+    [TerrainType.CRATER]: { base: '#6b3a2a', side: '#3f2016', rough: 0.98, metal: 0, craters: 44 },
+    [TerrainType.CANYON]: { base: '#4a2418', side: '#2b130c', rough: 0.98, metal: 0, craters: 8, accents: striationAccents('236,142,96') },
+    [TerrainType.OLYMPUS]: { base: '#8a4f38', side: '#542f20', rough: 0.95, metal: 0, craters: 26, accents: striationAccents('220,130,90') },
+  },
 };
 
 export type TileMaterials = [THREE.Material, THREE.Material, THREE.Material]; // [side, top, bottom]
 
 /** Two texture variants per terrain; combined with per-tile 60-degree
  * rotations this gives ~12 distinct-looking surfaces per type. */
-export function buildTerrainMaterials(): Record<TerrainType, TileMaterials[]> {
-  const bottom = new THREE.MeshStandardMaterial({ color: '#14181f', roughness: 1 });
+export function buildTerrainMaterials(world: World): Record<TerrainType, TileMaterials[]> {
+  const bottom = new THREE.MeshStandardMaterial({ color: world === 'MARS' ? '#1f0e08' : '#14181f', roughness: 1 });
+  const surfaces = SURFACES[world];
   const out = {} as Record<TerrainType, TileMaterials[]>;
-  (Object.keys(TERRAIN_SURFACE_3D) as TerrainType[]).forEach((terrain, ti) => {
-    const cfg = TERRAIN_SURFACE_3D[terrain];
+  (Object.keys(surfaces) as TerrainType[]).forEach((terrain, ti) => {
+    const cfg = surfaces[terrain];
     const side = new THREE.MeshStandardMaterial({ color: cfg.side, roughness: 0.9, metalness: 0.05, flatShading: true });
     out[terrain] = [0, 1].map(variant => {
       const { map, bump } = lunarMaps({
-        size: 512,
+        size: 1024,
         base: cfg.base,
-        seed: 1337 + ti * 97 + variant * 31,
+        seed: (world === 'MARS' ? 90210 : 1337) + ti * 97 + variant * 31,
         craters: cfg.craters,
         craterMin: 0.015,
         craterMax: 0.11,
@@ -268,18 +299,31 @@ export function buildTerrainMaterials(): Record<TerrainType, TileMaterials[]> {
   return out;
 }
 
-/** The big photoreal moon disc the board floats over. */
-export function buildMoonFloorMaterial(): THREE.MeshStandardMaterial {
-  const size = 1024;
-  const rand = mulberry32(20260703);
+/** The big photoreal planet disc the board floats over. */
+export function buildMoonFloorMaterial(world: World): THREE.MeshStandardMaterial {
+  const size = 2048;
+  const rand = mulberry32(world === 'MARS' ? 18770818 : 20260703);
   const { map, bump } = lunarMaps({
     size,
-    base: '#75777e',
-    seed: 424242,
-    craters: 120,
+    base: world === 'MARS' ? '#a35934' : '#75777e',
+    seed: world === 'MARS' ? 313131 : 424242,
+    craters: world === 'MARS' ? 90 : 120,
     craterMin: 0.006,
     craterMax: 0.075,
     accents: (c) => {
+      if (world === 'MARS') {
+        // Dark basalt plains and pale dust-storm sweeps
+        for (let i = 0; i < 8; i++) {
+          const x = rand() * size, y = rand() * size, r = size * (0.1 + rand() * 0.2);
+          const g = c.createRadialGradient(x, y, r * 0.2, x, y, r);
+          g.addColorStop(0, `rgba(70,32,18,${0.3 + rand() * 0.2})`);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          c.fillStyle = g;
+          c.fillRect(x - r, y - r, r * 2, r * 2);
+        }
+        striationAccents('236,180,140')(c, rand, size);
+        return;
+      }
       // Lunar maria — vast dark basalt plains
       for (let i = 0; i < 7; i++) {
         const x = rand() * size, y = rand() * size, r = size * (0.12 + rand() * 0.22);

@@ -19,6 +19,7 @@ export function loadGame(): GameState | null {
     if (!Array.isArray(parsed.factions) || parsed.factions.length === 0) return null;
     if (typeof parsed.boardRadius !== 'number') return null;
     if (!Array.isArray(parsed.history)) parsed.history = [];
+    if (parsed.world !== 'MOON' && parsed.world !== 'MARS') parsed.world = 'MOON';
     return parsed;
   } catch {
     return null;

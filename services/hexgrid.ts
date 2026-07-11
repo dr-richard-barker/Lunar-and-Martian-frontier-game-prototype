@@ -1,5 +1,10 @@
 import { Coord, HexData, TerrainType } from '../types';
 
+/** Terrain no rover can cross and nothing can be built on. */
+export const IMPASSABLE = new Set<TerrainType>([
+  TerrainType.CRATER, TerrainType.CANYON, TerrainType.OLYMPUS,
+]);
+
 export const HEX_DIRS: Coord[] = [
   { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 },
   { q: -1, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 },
@@ -33,7 +38,7 @@ export function neighbors(board: HexData[], hex: Coord): HexData[] {
 export function findPath(board: HexData[], from: Coord, to: Coord): Coord[] | null {
   const map = boardMap(board);
   const goal = map.get(hexKey(to));
-  if (!goal || goal.terrain === TerrainType.CRATER) return null;
+  if (!goal || IMPASSABLE.has(goal.terrain)) return null;
   if (from.q === to.q && from.r === to.r) return [];
 
   const cameFrom = new Map<string, string | null>();
@@ -56,7 +61,7 @@ export function findPath(board: HexData[], from: Coord, to: Coord): Coord[] | nu
       const next = { q: current.q + d.q, r: current.r + d.r };
       const nk = hexKey(next);
       const hex = map.get(nk);
-      if (!hex || hex.terrain === TerrainType.CRATER || cameFrom.has(nk)) continue;
+      if (!hex || IMPASSABLE.has(hex.terrain) || cameFrom.has(nk)) continue;
       cameFrom.set(nk, hexKey(current));
       queue.push(next);
     }

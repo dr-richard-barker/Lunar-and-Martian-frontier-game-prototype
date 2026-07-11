@@ -453,6 +453,31 @@ body {
   border-bottom-right-radius: 10px;
 }
 
+/* Mars sky: dusty butterscotch horizon glow instead of deep blue */
+body.world-mars #stars {
+  background: radial-gradient(ellipse at bottom, #2b130c 0%, #0b0503 100%);
+}
+body.world-mars .vignette {
+  background: radial-gradient(ellipse at center, transparent 52%, rgba(20, 6, 2, 0.36) 82%, rgba(20, 6, 2, 0.64) 100%);
+}
+
+/* Phobos — Mars's lumpy little moon (replaces Earth) */
+#earth.phobos {
+  width: 74px;
+  height: 64px;
+  top: 8%;
+  right: 11%;
+  border-radius: 47% 53% 44% 56% / 52% 46% 54% 48%;
+  background:
+    radial-gradient(circle at 62% 68%, rgba(20, 16, 14, 0.85) 0%, rgba(20, 16, 14, 0.5) 9%, transparent 14%),
+    radial-gradient(circle at 30% 40%, rgba(24, 20, 18, 0.5) 0%, transparent 7%),
+    radial-gradient(circle at 48% 22%, rgba(24, 20, 18, 0.45) 0%, transparent 6%),
+    radial-gradient(circle at 34% 32%, #b3a79d 0%, #8c817a 40%, #57504b 70%, #2e2a27 95%);
+  box-shadow:
+    inset -14px -10px 22px rgba(5, 3, 2, 0.9),
+    0 0 26px rgba(179, 167, 157, 0.18);
+}
+
 /* Distant Earth backdrop */
 #earth {
   position: fixed;

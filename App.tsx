@@ -5,7 +5,8 @@ import CityPanel from './components/CityPanel';
 import Board3D, { YieldPopup } from './components/Board3D';
 import NewColonyDialog from './components/NewColonyDialog';
 import DashboardPanel from './components/DashboardPanel';
-import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind, NewGameOptions, UpgradeType } from './types';
+import { GameState, BuildingType, ColonyEvent, CityProduct, ResourceKind, NewGameOptions, UpgradeType, VisualStyle } from './types';
+import { applyVisualStyle } from './components/Models3D';
 import { TICK_MS, BUILDINGS, TERRAIN_STYLES, RESOURCE_STYLES } from './constants';
 import {
   newGame, orderConstruction, demolish, enqueueProduct, cancelQueueItem, isWithinReach,
@@ -23,9 +24,12 @@ export type SurgeKind = 'none' | 'ring' | 'gold';
 let popupId = 0;
 
 const App: React.FC = () => {
-  const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame({ boardRadius: 5, aiCount: 3 }));
+  const [gameState, setGameState] = useState<GameState>(() => loadGame() ?? newGame({ boardRadius: 5, aiCount: 3, world: 'MOON' }));
   const [showNewColony, setShowNewColony] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [visualStyle, setVisualStyle] = useState<VisualStyle>(() => {
+    try { return localStorage.getItem('lf-style') === 'NASA' ? 'NASA' : 'NEON'; } catch { return 'NEON'; }
+  });
   const [speed, setSpeed] = useState(1);
   const [selectedHexId, setSelectedHexId] = useState<number | null>(null);
   const [activeEvent, setActiveEvent] = useState<ColonyEvent | null>(null);
@@ -108,6 +112,20 @@ const App: React.FC = () => {
     const interval = setInterval(() => setLore(nextLore()), 18000);
     return () => clearInterval(interval);
   }, []);
+
+  // --- Visual style (NEON cyberpunk vs realistic NASA hardware) ---
+  useEffect(() => {
+    applyVisualStyle(visualStyle);
+    try { localStorage.setItem('lf-style', visualStyle); } catch { /* ignore */ }
+  }, [visualStyle]);
+
+  // --- Per-world backdrop: Earth over the Moon, Phobos over Mars ---
+  const world = gameState.world ?? 'MOON';
+  useEffect(() => {
+    const earth = document.getElementById('earth');
+    if (earth) earth.className = world === 'MARS' ? 'phobos' : '';
+    document.body.classList.toggle('world-mars', world === 'MARS');
+  }, [world]);
 
   // --- Game actions ---
   const handleSelectHex = useCallback((id: number) => {
@@ -208,7 +226,8 @@ const App: React.FC = () => {
     const ids = new Set<number>();
     const player = gameState.factions[0];
     for (const hex of gameState.board) {
-      if (!hex.building && !hex.construction && isWithinReach(gameState.board, player, hex)) {
+      if (!hex.building && !hex.construction && TERRAIN_STYLES[hex.terrain].buildable &&
+        isWithinReach(gameState.board, player, hex)) {
         ids.add(hex.id);
       }
     }
@@ -254,11 +273,19 @@ const App: React.FC = () => {
   return (
     <div className="relative w-screen h-screen overflow-hidden" onPointerDown={unlock}>
       {/* Planetary Atmosphere Glow */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(30,58,138,0.15)_0%,_transparent_70%)] pointer-events-none" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: world === 'MARS'
+            ? 'radial-gradient(circle at center, rgba(154,52,18,0.18) 0%, transparent 70%)'
+            : 'radial-gradient(circle at center, rgba(30,58,138,0.15) 0%, transparent 70%)',
+        }}
+      />
 
       {/* WebGL board */}
       <Board3D
         gameState={gameState}
+        style={visualStyle}
         selectedHexId={selectedHexId}
         frontierIds={frontierIds}
         activeIds={activeIds}
@@ -291,6 +318,8 @@ const App: React.FC = () => {
         isRolling={isRolling}
         muted={muted}
         autoplay={autoplay}
+        visualStyle={visualStyle}
+        onToggleStyle={() => setVisualStyle(prev => (prev === 'NEON' ? 'NASA' : 'NEON'))}
         onToggleMute={handleToggleMute}
         onToggleAutoplay={handleToggleAutoplay}
         onSetSpeed={setSpeed}
