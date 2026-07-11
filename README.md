@@ -22,9 +22,12 @@ Best played on a desktop browser with a mouse.
 ## How to Play
 
 - **🔴 Two worlds** — colonize the Moon (gray maria, Earth overhead) or Mars: a
-  bigger red world split by the impassable **Valles Marineris** chasm (route your
-  rails around its east/west passes), crowned by **Olympus Mons**, with lumpy
-  little **Phobos** hanging in the butterscotch sky.
+  bigger red world crowned by **Olympus Mons**, with lumpy little **Phobos**
+  hanging in the butterscotch sky. The **Valles Marineris** trench crosses the
+  center: build any structure on its 🏔️ **cliff-face terraces**, while the deep
+  floor takes only maglev track — every connected floor track earns trade
+  credits, and where two factions' floor tracks meet, both earn a collaboration
+  bonus: the **collaborative trade railway**.
 - **🎨 Civilization style** — toggle between NEON (cyberpunk glow) and NASA
   (realistic matte hardware with status-light-level emissives) at any time.
 - **⚔️ Rival colonies** — up to three AI factions land alongside you, each building

@@ -9,7 +9,7 @@ interface NewColonyDialogProps {
 
 const WORLDS: { world: World; icon: string; name: string; blurb: string }[] = [
   { world: 'MOON', icon: '🌑', name: 'The Moon', blurb: 'Gray maria, Earth overhead. The classic frontier.' },
-  { world: 'MARS', icon: '🔴', name: 'Mars', blurb: 'Red rock, the Valles Marineris chasm, Olympus Mons, Phobos overhead.' },
+  { world: 'MARS', icon: '🔴', name: 'Mars', blurb: 'Red rock and Olympus Mons. Build into the Valles Marineris cliffs and run a trade railway along its floor.' },
 ];
 
 const NewColonyDialog: React.FC<NewColonyDialogProps> = ({ onStart, onClose }) => {

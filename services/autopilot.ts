@@ -58,7 +58,7 @@ const CREDIT_FLOOR = 120;
 /** Terrain-occupancy penalty: generic buildings should not squat on mineral tiles. */
 function terrainPenalty(terrain: TerrainType, preferred?: TerrainType): number {
   if (preferred && terrain === preferred) return 0;
-  if (terrain === TerrainType.REGOLITH) return 1;
+  if (terrain === TerrainType.REGOLITH || terrain === TerrainType.CLIFF) return 1;
   if (terrain === TerrainType.SILICATES) return 2;
   return 4; // ICE / ORES / HE3 — save these for their extractors
 }
@@ -67,11 +67,14 @@ function hubOf(state: GameState, faction: Faction): HexData {
   return state.board.find(h => h.id === faction.cityHexId)!;
 }
 
-function openSites(state: GameState, faction: Faction): HexData[] {
+/** Serviced open tiles. The canyon floor only takes track, so it is
+ * excluded unless the caller is placing rail. */
+function openSites(state: GameState, faction: Faction, forRail = false): HexData[] {
   return state.board.filter(h =>
     !h.building &&
     !h.construction &&
     TERRAIN_STYLES[h.terrain].buildable &&
+    (forRail || h.terrain !== TerrainType.CANYON) &&
     isWithinReach(state.board, faction, h)
   );
 }
@@ -101,7 +104,7 @@ function railSiteToward(state: GameState, faction: Faction, targets: HexData[]):
   if (targets.length === 0) return null;
   let best: HexData | null = null;
   let bestScore = Infinity;
-  for (const site of openSites(state, faction)) {
+  for (const site of openSites(state, faction, true)) {
     for (const target of targets) {
       const score = hexDistance(site, target) * 10 + terrainPenalty(site.terrain);
       if (score < bestScore) { bestScore = score; best = site; }
@@ -315,6 +318,26 @@ function buildStep(state: GameState, faction: Faction, persona: Persona): GameSt
   if (R[ResourceKind.CREDITS] > persona.padAt) {
     const next = tryOrder(state, faction, BuildingType.LAUNCH_PAD, genericSite(state, faction), CREDIT_FLOOR);
     if (next) return next;
+  }
+
+  // Valles Marineris trade railway: floor track pays for itself, so claim
+  // serviced floor tiles — and traders actively push rail toward the canyon.
+  if (state.world === 'MARS') {
+    if (R[ResourceKind.CREDITS] > 240) {
+      const floorSite = openSites(state, faction, true).find(h => h.terrain === TerrainType.CANYON);
+      if (floorSite) {
+        const next = tryOrder(state, faction, BuildingType.ROAD, floorSite);
+        if (next) return next;
+      }
+    }
+    if (faction.archetype === 'TRADERS' && R[ResourceKind.CREDITS] > 420) {
+      const floorTargets = state.board.filter(h =>
+        h.terrain === TerrainType.CANYON && !h.building && !h.construction &&
+        !isWithinReach(state.board, faction, h)
+      );
+      const next = tryOrder(state, faction, BuildingType.ROAD, railSiteToward(state, faction, floorTargets));
+      if (next) return next;
+    }
   }
 
   // Prosperity fallback.

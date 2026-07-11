@@ -5,7 +5,8 @@ export enum TerrainType {
   SILICATES = 'SILICATES', // Reflective flats — boosts solar arrays
   HE3 = 'HE3',             // Helium-3 rich regolith — high-value export
   CRATER = 'CRATER',       // Impact crater — unbuildable, impassable
-  CANYON = 'CANYON',       // Mars: Valles Marineris — unbuildable, impassable chasm
+  CANYON = 'CANYON',       // Mars: Valles Marineris floor — passable, maglev track only
+  CLIFF = 'CLIFF',         // Mars: Valles Marineris cliff face — buildable terraces
   OLYMPUS = 'OLYMPUS'      // Mars: Olympus Mons — unbuildable, impassable shield volcano
 }
 

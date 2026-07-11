@@ -1,8 +1,9 @@
 import { Coord, HexData, TerrainType } from '../types';
 
-/** Terrain no rover can cross and nothing can be built on. */
+/** Terrain no rover can cross and nothing can be built on. The canyon
+ * floor and cliff faces are NOT here — rovers switchback down them. */
 export const IMPASSABLE = new Set<TerrainType>([
-  TerrainType.CRATER, TerrainType.CANYON, TerrainType.OLYMPUS,
+  TerrainType.CRATER, TerrainType.OLYMPUS,
 ]);
 
 export const HEX_DIRS: Coord[] = [

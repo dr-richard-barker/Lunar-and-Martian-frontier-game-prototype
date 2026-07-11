@@ -251,6 +251,7 @@ const SURFACES: Record<World, Record<TerrainType, SurfaceCfg>> = {
     [TerrainType.HE3]: { base: '#6b6178', side: '#413a4c', rough: 0.85, metal: 0.1, craters: 20, accents: he3Accents },
     [TerrainType.CRATER]: { base: '#4e5058', side: '#2e3038', rough: 0.98, metal: 0, craters: 46 },
     [TerrainType.CANYON]: { base: '#3f4046', side: '#26272c', rough: 0.98, metal: 0, craters: 30 },
+    [TerrainType.CLIFF]: { base: '#5a5c64', side: '#35363c', rough: 0.95, metal: 0, craters: 22 },
     [TerrainType.OLYMPUS]: { base: '#6f7178', side: '#44454b', rough: 0.95, metal: 0, craters: 20 },
   },
   MARS: {
@@ -261,6 +262,7 @@ const SURFACES: Record<World, Record<TerrainType, SurfaceCfg>> = {
     [TerrainType.HE3]: { base: '#7d4b63', side: '#4a2b3a', rough: 0.85, metal: 0.1, craters: 16, accents: he3Accents },
     [TerrainType.CRATER]: { base: '#6b3a2a', side: '#3f2016', rough: 0.98, metal: 0, craters: 44 },
     [TerrainType.CANYON]: { base: '#4a2418', side: '#2b130c', rough: 0.98, metal: 0, craters: 8, accents: striationAccents('236,142,96') },
+    [TerrainType.CLIFF]: { base: '#7a3d26', side: '#421f12', rough: 0.9, metal: 0.05, craters: 10, accents: striationAccents('245,158,105') },
     [TerrainType.OLYMPUS]: { base: '#8a4f38', side: '#542f20', rough: 0.95, metal: 0, craters: 26, accents: striationAccents('220,130,90') },
   },
 };

@@ -9,7 +9,7 @@ export const BOARD_RADIUS = 4;
 /** Milliseconds per simulation tick (one "sol") at 1x speed. */
 export const TICK_MS = 1800;
 
-export const SAVE_KEY = 'lunar-frontier-save-v6';
+export const SAVE_KEY = 'lunar-frontier-save-v7';
 
 /** Dashboard time series: sample cadence (sols) and rolling cap. */
 export const HISTORY_INTERVAL = 2;
@@ -73,9 +73,16 @@ export const TERRAIN_STYLES: Record<TerrainType, { color: string; icon: string; 
   [TerrainType.SILICATES]: { color: '#f59e0b', icon: '💎', label: 'Silicate Flats', buildable: true },
   [TerrainType.HE3]: { color: '#8b5cf6', icon: '⚡', label: 'Helium-3 Field', buildable: true },
   [TerrainType.CRATER]: { color: '#1e293b', icon: '☄️', label: 'Impact Crater', buildable: false },
-  [TerrainType.CANYON]: { color: '#7c2d12', icon: '🏜️', label: 'Valles Marineris', buildable: false },
+  [TerrainType.CANYON]: { color: '#7c2d12', icon: '🏜️', label: 'Valles Marineris Floor', buildable: true },
+  [TerrainType.CLIFF]: { color: '#b45309', icon: '🏔️', label: 'Valles Cliff Face', buildable: true },
   [TerrainType.OLYMPUS]: { color: '#9a3412', icon: '⛰️', label: 'Olympus Mons', buildable: false },
 };
+
+/** Trade income per sol for each CONNECTED maglev track on the canyon floor. */
+export const CANYON_TRADE_CREDITS = 1.5;
+/** Extra per sol when a floor track touches another faction's connected
+ * floor track — the collaborative trade railway. Both sides earn it. */
+export const CANYON_COLLAB_BONUS = 2.5;
 
 export const RESOURCE_STYLES: Record<ResourceKind, { icon: string; label: string; color: string }> = {
   [ResourceKind.CREDITS]: { icon: '💰', label: 'Credits', color: '#facc15' },

@@ -25,6 +25,7 @@ const ELEV: Record<TerrainType, number> = {
   [TerrainType.HE3]: 0.12,
   [TerrainType.CRATER]: -0.14,
   [TerrainType.CANYON]: -0.55,
+  [TerrainType.CLIFF]: -0.28,
   [TerrainType.OLYMPUS]: 0.1,
 };
 

@@ -7,6 +7,7 @@ import {
   GROWTH_TICKS, DECLINE_TICKS, INITIAL_RESOURCES, INITIAL_POPULATION, MILESTONES,
   DICE_TOKEN_POOL, SURGE_MULTIPLIER, MAX_WORKERS, MAX_QUEUE, WORKER_SPEED, RAIL_SPEED,
   CITY_PRODUCTS, FACTION_PRESETS, UPGRADES, MAX_UPGRADES, HISTORY_INTERVAL, HISTORY_CAP,
+  CANYON_TRADE_CREDITS, CANYON_COLLAB_BONUS,
 } from '../constants';
 import { rollEvent } from './events';
 import { neighbors, findPath, hexDistance, boardMap, hexKey, HEX_DIRS, IMPASSABLE } from './hexgrid';
@@ -68,15 +69,18 @@ export function generateBoard(radius: number, hubs: Coord[], world: World = 'MOO
   }
 
   if (world === 'MARS') {
-    // Valles Marineris: an impassable chasm across the center, with open
-    // passes at the east and west edges so rovers can route around it.
-    const canyonHalf = radius >= 5 ? 1 : 0;
+    // Valles Marineris: a deep trench across the center. The floor (r = 0)
+    // only accepts maglev track — the future trade railway — while the
+    // cliff-face rows beside it are buildable terraces.
     for (const hex of hexes) {
       const xPos = hex.q + hex.r / 2;
       const nearHub = hubs.some(h => hexDistance(hex, h) <= 1);
-      if (!nearHub && Math.abs(hex.r) <= canyonHalf && Math.abs(xPos) <= radius * 0.72) {
+      if (nearHub || Math.abs(xPos) > radius * 0.72) continue;
+      if (hex.r === 0) {
         hex.terrain = TerrainType.CANYON;
-        hex.diceValue = null;
+        hex.diceValue = null; // rails don't produce; no yield token
+      } else if (Math.abs(hex.r) === 1 && radius >= 5) {
+        hex.terrain = TerrainType.CLIFF; // keeps its yield token
       }
     }
     // Olympus Mons: one towering shield volcano clear of every hub.
@@ -270,6 +274,32 @@ export function getHousing(board: HexData[], faction: Faction): number {
       : 0), 0);
 }
 
+/** Canyon-floor trade: each connected floor track earns credits, and one
+ * that touches another faction's connected floor track earns the
+ * collaboration bonus — the Valles Marineris trade railway. */
+export function getCanyonTrade(
+  board: HexData[],
+  activeSets: Set<number>[],
+  factionId: number,
+): { income: number; collabLinks: number } {
+  let income = 0;
+  let collabLinks = 0;
+  for (const hex of board) {
+    if (hex.terrain !== TerrainType.CANYON || hex.building !== BuildingType.ROAD) continue;
+    if (hex.owner !== factionId || !activeSets[factionId]?.has(hex.id)) continue;
+    income += CANYON_TRADE_CREDITS;
+    const collab = neighbors(board, hex).some(n =>
+      n.terrain === TerrainType.CANYON && n.building === BuildingType.ROAD &&
+      n.owner !== null && n.owner !== factionId && activeSets[n.owner]?.has(n.id)
+    );
+    if (collab) {
+      income += CANYON_COLLAB_BONUS;
+      collabLinks++;
+    }
+  }
+  return { income, collabLinks };
+}
+
 /** A faction's structures excluding its Hub and track segments. */
 export function countBuildings(board: HexData[], factionId: number): number {
   return board.filter(h =>
@@ -311,6 +341,8 @@ export function getRates(state: GameState, faction: Faction): Stockpile {
   for (const [kind, amount] of Object.entries(COLONIST_NEEDS)) {
     rates[kind as ResourceKind] -= amount * faction.population;
   }
+  const allSets = state.factions.map(f => getActiveSet(state.board, f));
+  rates[ResourceKind.CREDITS] += getCanyonTrade(state.board, allSets, faction.id).income;
   return rates;
 }
 
@@ -336,7 +368,10 @@ export function canBuild(state: GameState, factionId: number, hex: HexData, type
         : 'Tile occupied',
     };
   }
-  if (!TERRAIN_STYLES[hex.terrain].buildable) return { ok: false, reason: 'Craters are unbuildable' };
+  if (!TERRAIN_STYLES[hex.terrain].buildable) return { ok: false, reason: 'This terrain cannot be built on' };
+  if (hex.terrain === TerrainType.CANYON && type !== BuildingType.ROAD) {
+    return { ok: false, reason: 'Only maglev track can be laid on the canyon floor' };
+  }
   if (!isWithinReach(state.board, faction, hex)) {
     return { ok: false, reason: 'Off your maglev network — extend track from your Colony Hub first' };
   }
@@ -539,6 +574,9 @@ export function tick(state: GameState): TickResult {
 
   const moveMap = boardMap(board);
   const factions: Faction[] = [];
+  // Snapshot every faction's network once for canyon-trade adjacency checks.
+  const tradeSets = state.factions.map(f => getActiveSet(board, f));
+  let anyCollabLink = false;
 
   for (const original of state.factions) {
     const faction: Faction = {
@@ -583,6 +621,11 @@ export function tick(state: GameState): TickResult {
 
     // Colonists: taxes and needs
     resources[ResourceKind.CREDITS] += faction.population * COLONIST_TAX;
+
+    // Valles Marineris trade railway
+    const trade = getCanyonTrade(board, tradeSets, faction.id);
+    resources[ResourceKind.CREDITS] += trade.income;
+    if (trade.collabLinks > 0) anyCollabLink = true;
     let shortage = false;
     for (const [kind, amount] of Object.entries(COLONIST_NEEDS)) {
       const need = amount * faction.population;
@@ -710,6 +753,10 @@ export function tick(state: GameState): TickResult {
       milestones.push(m.id);
       logs = appendLog(logs, `★ ${m.message}`);
     }
+  }
+  if (anyCollabLink && !milestones.includes('canyonlink')) {
+    milestones.push('canyonlink');
+    logs = appendLog(logs, '★ Collaborative trade railway established through Valles Marineris — linked colonies profit!');
   }
 
   // Dashboard time series (rolling window).
